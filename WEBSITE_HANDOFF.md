@@ -7,12 +7,12 @@ Single source of truth for cross-LLM continuation while finishing the Connex web
 Finish and ship the website updates first, then push/deploy.
 
 ## Last Updated
-2026-03-04 18:36:15 SAST
+2026-03-04 19:12:23 SAST
 
 ## Current State Snapshot
 - Branch: `dev`
 - Live site: `https://connexsa.co.za` is up (`HTTP 200`).
-- Live vs local: local website has newer content than live (example: local `index.html` title is `Connex — South Africa, Connected.` while live currently shows older title).
+- Live vs local: local website has newer content than live (example: local `index.html` title is now `Connex — Africa, Connected.`).
 - Local website changes are not pushed yet.
 
 ## Website Files In Scope
@@ -102,6 +102,17 @@ Finish and ship the website updates first, then push/deploy.
   - response `HTTP/2 200`
   - updated `last-modified` header observed.
 
+### 2026-03-04 19:12 SAST
+- Updated website copy from South Africa-specific positioning to Africa-wide positioning across:
+  - `docs/index.html`
+  - `docs/about.html`
+  - `docs/features.html`
+  - footer brand/copyright text in `docs/contact.html`, `docs/security.html`, `docs/privacy.html`, `docs/terms.html`
+- Updated metadata/structured data branding to Africa-wide phrasing where relevant.
+- Kept legal/jurisdiction references to South African law (POPIA/Terms) unchanged.
+- Changes are local and not pushed/deployed yet.
+
 ## Next Immediate Task
-1. Website completion is done and live.
-2. Continue with next product area (mobile/backend) using this file for continuity.
+1. Commit and push the new Africa-wide website copy updates.
+2. Deploy and verify production reflects `Connex — Africa, Connected.`.
+3. Continue with next product area (mobile/backend) using this file for continuity.
