@@ -7,13 +7,13 @@ Single source of truth for cross-LLM continuation while finishing the Connex web
 Finish and ship the website updates first, then push/deploy.
 
 ## Last Updated
-2026-03-04 19:19:41 SAST
+2026-03-04 19:21:28 SAST
 
 ## Current State Snapshot
 - Branch: `dev`
 - Live site: `https://connexsa.co.za` is up (`HTTP 200`).
-- Live vs local: production currently reflects `Connex — Africa, Connected.` from commit `35f7c24`.
-- Local website has additional unpublished legal-copy edits removing remaining South Africa references in `privacy/terms/index`.
+- Live vs local: production reflects latest website copy from commit `499922a`.
+- Global wording status: zero `South Africa` string matches across `docs/*.html`.
 
 ## Website Files In Scope
 - `docs/index.html`
@@ -124,7 +124,11 @@ Finish and ship the website updates first, then push/deploy.
 - Current local scan result: zero `South Africa` string matches across `docs/*.html`.
 - These latest edits are local and not pushed/deployed yet.
 
+### 2026-03-04 19:21 SAST
+- Created commit: `499922a` — `chore: remove remaining South Africa references from website copy`.
+- Pushed `499922a` to `origin/dev`.
+- Verified production pages (`/`, `/privacy.html`, `/terms.html`, `/about.html`, `/features.html`) return zero `South Africa` matches.
+
 ## Next Immediate Task
-1. Commit and push the latest zero-`South Africa` legal copy pass.
-2. Verify production after deploy and cache window.
-3. Continue with next product area (mobile/backend) using this file for continuity.
+1. Continue with next product area (mobile/backend) using this file for continuity.
+2. Optionally tighten legal language with counsel-reviewed jurisdiction text if needed.
