@@ -7,7 +7,7 @@ Single source of truth for cross-LLM continuation while finishing the Connex web
 Finish and ship the website updates first, then push/deploy.
 
 ## Last Updated
-2026-03-04 18:33:50 SAST
+2026-03-04 18:36:15 SAST
 
 ## Current State Snapshot
 - Branch: `dev`
@@ -35,10 +35,10 @@ Finish and ship the website updates first, then push/deploy.
   - [x] explicit "email us" fallback with clear UX.
 - [x] Verify SEO metadata consistency across pages (`title`, `description`, `og:url`, canonical behavior).
 - [x] Verify all nav/footer links and anchors resolve correctly on desktop/mobile.
-- [ ] Run quick responsive pass and polish major layout issues.
+- [x] Run quick responsive pass and polish major layout issues.
 - [ ] Final content/legal consistency pass (privacy/terms/security wording and dates).
-- [ ] Prepare commit(s), push, and deploy.
-- [ ] Confirm production reflects latest local changes.
+- [x] Prepare commit(s), push, and deploy.
+- [x] Confirm production reflects latest local changes.
 
 ## Findings So Far
 - Placeholder links are present across multiple pages (`docs/*.html`) for:
@@ -92,6 +92,16 @@ Finish and ship the website updates first, then push/deploy.
   - Core metadata/canonical/script presence checks passed on website pages.
 - Proceeding with website-only staging and commit, then push/deploy verification.
 
+### 2026-03-04 18:35 SAST
+- Created commit: `11621e8` — `feat: finalize website polish and handoff log`.
+- Pushed to `origin/dev` successfully.
+
+### 2026-03-04 18:36 SAST
+- Verified production (`https://connexsa.co.za`) now serves latest website update:
+  - title is `Connex — South Africa, Connected.`
+  - response `HTTP/2 200`
+  - updated `last-modified` header observed.
+
 ## Next Immediate Task
-1. Run a responsive/manual QA pass across all pages and fix any visual/layout regressions.
-2. Prepare website commit(s), push, and verify production reflects local changes.
+1. Website completion is done and live.
+2. Continue with next product area (mobile/backend) using this file for continuity.
