@@ -60,13 +60,14 @@ Connex is a South African super app. The founder does not code — AI models are
 | dotenv | ^16.x | Load .env |
 
 ### Infrastructure
-| Service | Purpose |
-|---|---|
-| Supabase | PostgreSQL DB, Auth, Realtime (chat), Storage |
-| Railway | Backend hosting (auto-deploy from GitHub) |
-| Upstash Redis | Session cache, rate limiting, loadshedding cache |
-| Firebase FCM | Push notifications |
-| Expo EAS | Mobile builds and distribution |
+| Service | Purpose | URL / ID |
+|---|---|---|
+| Supabase | PostgreSQL DB, Auth, Realtime (chat), Storage | kirpihmdkpdvekovnzxd.supabase.co |
+| Railway | Backend hosting (auto-deploy from GitHub) | serene-creation-production.up.railway.app |
+| Upstash Redis | Session cache, rate limiting, loadshedding cache | profound-gazelle-62286.upstash.io |
+| Firebase FCM | Push notifications | project: connex-f9119, sender ID: 821743814832 |
+| GitHub | Source code, CI/CD trigger for Railway | github.com/GalelioHawk/connex |
+| Expo EAS | Mobile builds and distribution | slug: connex, bundle: com.connex.app |
 
 ---
 
@@ -264,4 +265,14 @@ fix/*       — bug fixes
 
 ---
 
-*Last updated: March 2026 | Phase 1 — MVP Build*
+## PHASE STATUS
+
+| Phase | Status | Started | Target Complete |
+|---|---|---|---|
+| Phase 0 — Infrastructure | ✅ Complete | — | 3 March 2026 |
+| Phase 1 — MVP (Chat, Feed, Edu) | 🔄 In Progress | 3 March 2026 | ~25 May 2026 |
+| Phase 2 — Connex Pay | ⏳ Pending | — | TBD |
+| Phase 3 — Connex Clips | ⏳ Pending | — | TBD |
+| Phase 4 — Connex Logistics | ⏳ Pending | — | TBD |
+
+*Last updated: 3 March 2026 | Phase 1 — MVP Build in progress*
