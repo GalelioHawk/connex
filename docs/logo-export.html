@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Connex Logo Export</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #f0f0f0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; gap: 48px; font-family: Inter, sans-serif; }
+
+    .card {
+      background: white;
+      border-radius: 24px;
+      padding: 80px 120px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card.dark {
+      background: #0D1B2A;
+    }
+
+    .label {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .instructions {
+      background: white;
+      border-radius: 16px;
+      padding: 24px 32px;
+      max-width: 600px;
+      font-size: 15px;
+      line-height: 1.7;
+      color: #333;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .instructions h3 { font-size: 16px; font-weight: 800; margin-bottom: 12px; color: #0D1B2A; }
+    .instructions ol { padding-left: 20px; }
+    .instructions li { margin-bottom: 6px; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <div>
+    <p class="label">Light version — for white / clear backgrounds</p>
+    <div class="card" id="logo-light">
+      <svg xmlns="http://www.w3.org/2000/svg" width="600" height="160" viewBox="0 0 600 160">
+        <defs>
+          <linearGradient id="gLight" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#006B3C"/>
+            <stop offset="100%" style="stop-color:#00A86B"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Mark: outer ring -->
+        <circle cx="80" cy="80" r="68" fill="none" stroke="#0D1B2A" stroke-width="5"/>
+
+        <!-- Mark: inner connection nodes -->
+        <circle cx="80" cy="38"  r="10" fill="url(#gLight)"/>
+        <circle cx="80" cy="122" r="10" fill="url(#gLight)"/>
+        <circle cx="38"  cy="80" r="10" fill="#0D1B2A"/>
+        <circle cx="122" cy="80" r="10" fill="#0D1B2A"/>
+
+        <!-- Mark: connecting lines -->
+        <line x1="80" y1="48"  x2="80"  y2="72"  stroke="#0D1B2A" stroke-width="3" stroke-linecap="round"/>
+        <line x1="80" y1="88"  x2="80"  y2="112" stroke="#0D1B2A" stroke-width="3" stroke-linecap="round"/>
+        <line x1="48"  y1="80" x2="70"  y2="80"  stroke="url(#gLight)" stroke-width="3" stroke-linecap="round"/>
+        <line x1="90"  y1="80" x2="112" y2="80"  stroke="url(#gLight)" stroke-width="3" stroke-linecap="round"/>
+
+        <!-- Mark: center dot -->
+        <circle cx="80" cy="80" r="7" fill="url(#gLight)"/>
+
+        <!-- Wordmark -->
+        <text
+          x="174"
+          y="105"
+          font-family="Inter, Arial, sans-serif"
+          font-size="82"
+          font-weight="900"
+          fill="#0D1B2A"
+          letter-spacing="-3"
+        >Connex</text>
+      </svg>
+    </div>
+  </div>
+
+  <div>
+    <p class="label">Dark version — for dark backgrounds</p>
+    <div class="card dark">
+      <svg xmlns="http://www.w3.org/2000/svg" width="600" height="160" viewBox="0 0 600 160">
+        <defs>
+          <linearGradient id="gDark" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#006B3C"/>
+            <stop offset="100%" style="stop-color:#00A86B"/>
+          </linearGradient>
+        </defs>
+
+        <circle cx="80" cy="80" r="68" fill="none" stroke="white" stroke-width="5"/>
+        <circle cx="80" cy="38"  r="10" fill="url(#gDark)"/>
+        <circle cx="80" cy="122" r="10" fill="url(#gDark)"/>
+        <circle cx="38"  cy="80" r="10" fill="white"/>
+        <circle cx="122" cy="80" r="10" fill="white"/>
+        <line x1="80" y1="48"  x2="80"  y2="72"  stroke="white" stroke-width="3" stroke-linecap="round"/>
+        <line x1="80" y1="88"  x2="80"  y2="112" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        <line x1="48"  y1="80" x2="70"  y2="80"  stroke="url(#gDark)" stroke-width="3" stroke-linecap="round"/>
+        <line x1="90"  y1="80" x2="112" y2="80"  stroke="url(#gDark)" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="80" cy="80" r="7" fill="url(#gDark)"/>
+
+        <text
+          x="174"
+          y="105"
+          font-family="Inter, Arial, sans-serif"
+          font-size="82"
+          font-weight="900"
+          fill="white"
+          letter-spacing="-3"
+        >Connex</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="instructions">
+    <h3>How to save as PNG for the application</h3>
+    <ol>
+      <li>Right-click on the <strong>light version</strong> logo above</li>
+      <li>Select <strong>"Save image as…"</strong> — or take a screenshot of just that card</li>
+      <li>On Mac: <code>Cmd + Shift + 4</code> then drag to select just the white card</li>
+      <li>Upload that PNG to the accelerator form</li>
+    </ol>
+    <p style="margin-top:12px;font-size:13px;color:#888;">The SVG is vector — it is infinitely high resolution. If you need a larger PNG, zoom in (Cmd +) before screenshotting.</p>
+  </div>
+
+</body>
+</html>
