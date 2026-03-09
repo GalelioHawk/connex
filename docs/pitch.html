@@ -780,6 +780,32 @@
       text-align: center;
     }
 
+    /* ── Print / PDF export ── */
+    @media print {
+      @page { size: 1280px 720px; margin: 0; }
+
+      html, body { overflow: visible; height: auto; background: #0A0F1A; }
+
+      .nav, #pdfBtn { display: none !important; }
+
+      .deck { position: static; height: auto; }
+
+      .slide {
+        position: relative !important;
+        opacity: 1 !important;
+        pointer-events: all !important;
+        width: 1280px;
+        height: 720px;
+        display: flex !important;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+      }
+
+      /* Force backgrounds to print */
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+
     /* ── Responsive ── */
     @media (max-width: 900px) {
       .slide { padding: 40px 32px; }
@@ -1221,6 +1247,11 @@
   </section>
 
 </div>
+
+<!-- PDF export button -->
+<button onclick="window.print()" style="position:fixed;top:20px;right:20px;z-index:200;background:rgba(0,168,107,0.15);border:1px solid rgba(0,168,107,0.4);color:#00A86B;font-family:Inter,sans-serif;font-size:13px;font-weight:700;padding:10px 18px;border-radius:10px;cursor:pointer;letter-spacing:0.3px;" id="pdfBtn">
+  ↓ Save as PDF
+</button>
 
 <!-- Navigation -->
 <nav class="nav" id="nav">
