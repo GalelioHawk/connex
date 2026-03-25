@@ -7,9 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
+import { useAction } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import { useAuthStore } from '../../store/authStore';
 import { chatService } from '../../services/chat';
-import { sosService } from '../../services/sos';
+import type { Id } from '../../../convex/_generated/dataModel';
 
 interface Props {
   visible: boolean;
@@ -78,7 +80,9 @@ function SOSRow({ onSOSTriggered }: { onSOSTriggered: () => void }) {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 export default function NewChatModal({ visible, onClose, onConversationCreated }: Props) {
   const navigation  = useNavigation<any>();
-  const accessToken = useAuthStore((s) => s.accessToken)!;
+  const sessionId = useAuthStore((s) => s.sessionId)!;
+
+  const triggerAlertAction = useAction(api.sos.triggerAlert);
 
   const [search, setSearch]         = useState('');
   const [results, setResults]       = useState<{ id: string; name: string; phone: string }[]>([]);
@@ -93,7 +97,7 @@ export default function NewChatModal({ visible, onClose, onConversationCreated }
     searchTimer.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const { users } = await chatService.searchUsers(text.trim(), accessToken);
+        const users = await chatService.searchUsers(sessionId, text.trim());
         setResults(users);
       } catch { /* ignore */ }
       finally { setSearching(false); }
@@ -103,8 +107,8 @@ export default function NewChatModal({ visible, onClose, onConversationCreated }
   async function startDirectChat(userId: string, name: string) {
     setStarting(userId);
     try {
-      const { conversation } = await chatService.createConversation('direct', [userId], undefined, accessToken);
-      onConversationCreated(conversation.id, name);
+      const { conversationId } = await chatService.createConversation(sessionId, 'direct', [userId]);
+      onConversationCreated(conversationId, name);
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Could not start chat');
     } finally {
@@ -114,16 +118,16 @@ export default function NewChatModal({ visible, onClose, onConversationCreated }
 
   async function handleSOSTriggered() {
     try {
-      const result = await sosService.trigger(accessToken);
+      const result = await triggerAlertAction({ sessionId: sessionId as Id<'sessions'> });
       Alert.alert(
-        '🆘 SOS Sent',
-        result.notified_count > 0
-          ? `${result.notified_count} trusted contact${result.notified_count > 1 ? 's have' : ' has'} been notified.`
+        'SOS Sent',
+        result.notified > 0
+          ? `${result.notified} trusted contact${result.notified > 1 ? 's have' : ' has'} been notified.`
           : 'SOS logged. You have no accepted SOS contacts yet.',
         [{ text: 'OK' }],
       );
     } catch {
-      Alert.alert('🆘 SOS Sent', 'Your trusted contacts have been notified.', [{ text: 'OK' }]);
+      Alert.alert('SOS Sent', 'Your trusted contacts have been notified.', [{ text: 'OK' }]);
     }
   }
 
@@ -168,8 +172,6 @@ export default function NewChatModal({ visible, onClose, onConversationCreated }
 
           {/* Quick actions */}
           <View style={s.optionsList}>
-            <SOSRow onSOSTriggered={handleSOSTriggered} />
-
             <TouchableOpacity
               style={[s.optionItem, s.optionBorder]}
               activeOpacity={0.7}
@@ -180,20 +182,6 @@ export default function NewChatModal({ visible, onClose, onConversationCreated }
               </View>
               <View style={s.optionText}>
                 <Text style={s.optionLabel}>New group</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[s.optionItem, s.optionBorder]}
-              activeOpacity={0.7}
-              onPress={() => { handleClose(); navigation.navigate('Chat', { screen: 'SOSContacts' }); }}
-            >
-              <View style={s.optionIcon}>
-                <Ionicons name="shield-checkmark-outline" size={22} color="#FFFFFF" />
-              </View>
-              <View style={s.optionText}>
-                <Text style={s.optionLabel}>Manage SOS contacts</Text>
-                <Text style={s.optionSubtitle}>Add trusted people for emergencies</Text>
               </View>
             </TouchableOpacity>
 
@@ -216,6 +204,8 @@ export default function NewChatModal({ visible, onClose, onConversationCreated }
                 <Text style={s.optionSubtitle}>Post a community alert to your area</Text>
               </View>
             </TouchableOpacity>
+
+            <SOSRow onSOSTriggered={handleSOSTriggered} />
           </View>
 
           {/* Search results */}

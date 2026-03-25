@@ -1315,16 +1315,16 @@ tbl(
         ("Mobile App",       "Expo + React Native + TypeScript",         "Cross-platform iOS and Android app"),
         ("Styling",          "NativeWind (Tailwind CSS for RN)",          "Consistent, fast UI development"),
         ("State Management", "Zustand",                                   "Lightweight global state — auth, chat, feed"),
-        ("Navigation",       "React Navigation v6",                      "Screen routing and tab navigation"),
-        ("Backend",          "Node.js + Express + TypeScript",           "REST API server — hosted on Railway"),
+        ("Navigation",       "React Navigation v7",                      "Screen routing and tab navigation"),
+        ("Backend",          "Node.js + Express + TypeScript",           "Thin privileged API for SOS, push, alerts, and admin-only flows"),
         ("Database",         "Supabase (PostgreSQL)",                    "Primary data store — 11 core tables"),
-        ("Authentication",   "Supabase Auth + JWT + bcrypt",             "Phone OTP + password, secure tokens"),
-        ("Real-time Chat",   "Supabase Realtime (WebSocket)",            "Live message delivery — no Socket.io"),
+        ("Authentication",   "Supabase Auth + phone/password",           "Direct mobile sessions with backend verification for protected routes"),
+        ("Real-time Chat",   "Supabase Realtime (WebSocket)",            "Live message delivery for active chats — no Socket.io"),
         ("File Storage",     "Supabase Storage",                         "Avatars, post media, PDFs, chat media"),
-        ("Cache / Sessions", "Upstash Redis (serverless)",               "JWT sessions, rate limiting, alert cache"),
+        ("Cache / Sessions", "Upstash Redis (optional)",                 "Rate limiting and alert cache when enabled"),
         ("Push Notifications","Firebase FCM + Expo Notifications",       "SOS alerts, chat notifications, feed"),
-        ("Loadshedding Data","EskomSePush API (cached in Redis)",        "Official schedule + stage data"),
-        ("Backend Hosting",  "Railway",                                  "Auto-deploy from GitHub, free tier entry"),
+        ("Loadshedding Data","EskomSePush API (cached when enabled)",    "Official schedule + stage data"),
+        ("Backend Hosting",  "Any Node host",                            "Optional hosted backend once local/free-tier development is no longer enough"),
         ("Mobile Builds",    "Expo EAS",                                 "APK/AAB builds, OTA updates"),
     ],
     col_widths=[1.5, 2.2, 2.5]
@@ -1373,19 +1373,16 @@ para(
     "primary data layer with Row Level Security enforced at the database level, ensuring data "
     "isolation even if application-layer security is compromised. Supabase Realtime handles WebSocket "
     "connections for live chat delivery, scaling horizontally with the Supabase infrastructure. "
-    "The Express backend, hosted on Railway, scales via Railway's automatic deployment and container "
-    "orchestration. Upstash Redis provides a serverless, auto-scaling cache layer for JWT sessions, "
-    "rate limiting state, and the loadshedding schedule cache."
+    "The Express backend stays thin and only handles privileged workflows such as SOS fan-out, push "
+    "notification delivery, and official alert integrations. Redis remains optional and is used only "
+    "for caching and rate limiting when it is available."
 )
 para(
     "The free tier entry points of each infrastructure provider are specifically chosen to match the "
     "Phase 1 user volume projections: Supabase free tier handles up to 500MB of database storage "
-    "and 2GB of file storage, sufficient for the first 50,000 users. Railway's free tier with the "
-    "starter plan handles the backend API load at Phase 1 volume. Upstash Redis free tier handles "
-    "10,000 commands per day, sufficient with aggressive caching. Each service has a clear, "
-    "well-documented paid upgrade path: Supabase Pro at USD 25 per month, Railway at USD 5 per "
-    "month per service, Upstash Redis at USD 0.20 per 100K commands above the free limit. These "
-    "costs are explicitly modelled in the financial projections and scale proportionally with revenue."
+    "and 2GB of file storage, sufficient for the first 50,000 users. Firebase FCM remains free for "
+    "standard push volumes, and Redis can stay disabled entirely in the zero-budget phase. Paid "
+    "hosting and paid third-party integrations are postponed until product traction requires them."
 )
 
 h2("9.5  Security & POPIA Compliance")
@@ -1398,8 +1395,8 @@ para(
     "regardless of whether the company is formally registered. The following security controls are "
     "built into the architecture at the design level, not retrofitted after the fact."
 )
-bullet("All passwords are hashed with bcrypt before storage. No plain-text credentials are ever stored.", bold_prefix="Password security.")
-bullet("All API endpoints are protected by JWT authentication middleware. No private data is accessible without a valid token.", bold_prefix="Authentication.")
+bullet("Supabase Auth is the session source of truth. The backend verifies Supabase access tokens before serving private data.", bold_prefix="Authentication.")
+bullet("Legacy bcrypt password hashes are retained only long enough to migrate older custom-auth accounts safely into Supabase Auth. No plain-text credentials are ever stored.", bold_prefix="Password security.")
 bullet("Supabase Row Level Security (RLS) is enabled on all database tables, ensuring users can only access their own data even at the database layer.", bold_prefix="Data isolation.")
 bullet("The Supabase service role key (admin-level database access) never leaves the backend server. It is never embedded in the mobile app.", bold_prefix="Secret management.")
 bullet("All request bodies are validated with Zod schema validation before any processing occurs, preventing injection attacks and malformed data.", bold_prefix="Input validation.")
@@ -1875,8 +1872,7 @@ tbl(
         ("Express",               "^4.x",     "HTTP server framework"),
         ("TypeScript",            "^5.x",     "Static typing — all code is TypeScript"),
         ("@supabase/supabase-js", "^2.x",     "Supabase admin client — service_role key"),
-        ("jsonwebtoken",          "^9.x",     "JWT creation and verification"),
-        ("bcryptjs",              "^2.x",     "Password hashing"),
+        ("bcryptjs",              "^3.x",     "Legacy-password migration support"),
         ("Zod",                   "^3.x",     "Request body validation"),
         ("ioredis",               "^5.x",     "Upstash Redis client"),
         ("node-cron",             "^3.x",     "Scheduled jobs — loadshedding data refresh"),
@@ -1897,7 +1893,7 @@ tbl(
     [
         ("Supabase",      "PostgreSQL DB, Auth, Realtime (chat), Storage",     "Free — 500MB DB, 1GB storage"),
         ("Railway",       "Backend hosting — auto-deploy from GitHub",         "Free — $5/month credit"),
-        ("Upstash Redis", "JWT sessions, rate limiting, loadshedding cache",   "Free — 10K commands/day"),
+        ("Upstash Redis", "Optional cache, rate limiting, loadshedding cache", "Free — 10K commands/day"),
         ("Firebase FCM",  "Push notifications — SOS, chat, feed alerts",      "Free forever"),
         ("Expo EAS",      "Mobile app builds and distribution",                "Free — 30 builds/month"),
     ],

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import {
   useFonts,
@@ -12,14 +12,15 @@ interface Props {
   color?: 'gradient' | 'dark' | 'white';
 }
 
-const SIZES = {
-  sm: { fontSize: 28, width: 140, height: 40 },
-  md: { fontSize: 42, width: 210, height: 60 },
-  lg: { fontSize: 58, width: 290, height: 80 },
-};
-
 export default function ConnexLogo({ size = 'md', color = 'gradient' }: Props) {
   const [fontsLoaded] = useFonts({ Poppins_900Black });
+  const { width: sw } = useWindowDimensions();
+
+  const SIZES = {
+    sm: { fontSize: 28,          width: sw * 0.38, height: 40 },
+    md: { fontSize: sw * 0.105,  width: sw * 0.60, height: sw * 0.15 },
+    lg: { fontSize: sw * 0.13,   width: sw * 0.74, height: sw * 0.19 },
+  };
 
   const { fontSize, width, height } = SIZES[size];
 

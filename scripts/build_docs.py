@@ -337,20 +337,14 @@ NODE_ENV=development      # development | production
 # The SERVICE_ROLE key bypasses Row Level Security — keep it secret.
 
 SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your-anon-key-here
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 
 # !! NEVER expose SERVICE_ROLE_KEY to the mobile app !!
 
-# ── JWT ───────────────────────────────────────────────────────────────────────
-# Generate a strong secret: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-
-JWT_SECRET=your-very-long-random-secret-here
-JWT_EXPIRES_IN=7d
-JWT_REFRESH_EXPIRES_IN=30d
-
-# ── REDIS (Upstash) ───────────────────────────────────────────────────────────
-# Found in: Upstash Console → Your database → REST API
-# Use the REDIS_URL format (not REST URL) for ioredis
+# ── REDIS (optional) ──────────────────────────────────────────────────────────
+# Leave blank in zero-budget/local setups.
+# If REDIS_URL is empty, the backend falls back to an in-memory cache.
 
 REDIS_URL=rediss://default:your-password@your-endpoint.upstash.io:6379
 
@@ -446,28 +440,27 @@ Connex is a South African super app. The founder does not code — AI models are
 ### Backend
 | Tool | Version | Purpose |
 |---|---|---|
-| Node.js | 20.x LTS | Runtime |
-| Express | ^4.x | HTTP server |
+| Node.js | 20.x LTS+ | Runtime |
+| Express | ^5.x | HTTP server |
 | TypeScript | ^5.x | All code is TypeScript — no plain JS |
-| @supabase/supabase-js | ^2.x | Supabase admin client (service_role key) |
-| jsonwebtoken | ^9.x | JWT auth tokens |
-| bcryptjs | ^2.x | Password hashing |
-| Zod | ^3.x | Request body validation |
-| ioredis | ^5.x | Upstash Redis client |
-| node-cron | ^3.x | Scheduled jobs (loadshedding refresh) |
+| @supabase/supabase-js | ^2.x | Supabase admin + auth clients |
+| bcryptjs | ^3.x | Legacy-password migration support |
+| Zod | ^4.x | Request body validation |
+| ioredis | ^5.x | Optional cache client |
+| node-cron | ^4.x | Scheduled jobs (loadshedding refresh) |
 | axios | ^1.x | HTTP client for EskomSePush API |
 | cors | ^2.x | CORS middleware |
 | helmet | ^8.x | Security headers |
-| express-rate-limit | ^7.x | Rate limiting |
-| firebase-admin | ^12.x | Send FCM push notifications |
-| dotenv | ^16.x | Load .env |
+| express-rate-limit | ^8.x | Rate limiting |
+| firebase-admin | ^13.x | Send FCM push notifications |
+| dotenv | ^17.x | Load .env |
 
 ### Infrastructure
 | Service | Purpose |
 |---|---|
 | Supabase | PostgreSQL DB, Auth, Realtime (chat), Storage |
-| Railway | Backend hosting (auto-deploy from GitHub) |
-| Upstash Redis | Session cache, rate limiting, loadshedding cache |
+| Express backend | Privileged API logic, push delivery, official integrations |
+| Upstash Redis | Optional cache, rate limiting, loadshedding cache |
 | Firebase FCM | Push notifications |
 | Expo EAS | Mobile builds and distribution |
 
@@ -617,9 +610,10 @@ connex/
 - Grade 10, 11, 12 only in Phase 1.
 
 **Authentication:**
-- Phone number + password (not OTP-only). Supabase Auth for OTP verification.
-- JWT stored in AsyncStorage (via Zustand persist).
-- Refresh token stored in Redis with TTL matching `JWT_REFRESH_EXPIRES_IN`.
+- Phone number + password with Supabase Auth as the real session source of truth.
+- Mobile sign-in/sign-up uses Supabase directly; backend auth endpoints remain only as a legacy-account bridge.
+- Access and refresh tokens are persisted in AsyncStorage by the mobile app and refreshed through Supabase.
+- For zero-budget password signup, disable email confirmation in Supabase Auth because the app uses phone-to-email identity mapping behind the scenes.
 
 ---
 
@@ -643,7 +637,7 @@ fix/*       — bug fixes
 - Do NOT install packages not listed in the tech stack without asking first.
 - Do NOT use Next.js — this is a mobile app. There is no web frontend in Phase 1.
 - Do NOT use MongoDB — the database is Supabase (PostgreSQL) only.
-- Do NOT use Redis Cloud — use Upstash Redis only.
+- Do NOT make Redis a hard requirement for local development or zero-budget setups.
 - Do NOT use Socket.io — Supabase Realtime handles WebSocket connections.
 - Do NOT use React Context API for global state — use Zustand.
 - Do NOT hardcode any API keys, URLs, or secrets — use .env variables.

@@ -4,42 +4,53 @@ import * as Notifications from 'expo-notifications';
 import { isRunningInExpoGo } from 'expo';
 import { useAuthStore } from '../store/authStore';
 import { useMessageStore } from '../store/messageStore';
+import { useSettingsStore } from '../store/settingsStore';
 import { authService } from '../services/auth';
+import { chatService } from '../services/chat';
 import { navigateToChatRoom } from '../navigation/navigationRef';
-import type { MessageWithSender } from '../services/chat';
 
 export default function usePushNotifications() {
-  const user        = useAuthStore((s) => s.user);
-  const accessToken = useAuthStore((s) => s.accessToken);
-  const setPushed   = useMessageStore((s) => s.setPushedMessage);
+  const sessionId = useAuthStore((s) => s.sessionId);
+  const user      = useAuthStore((s) => s.user);
+  const setIncoming = useMessageStore((s) => s.setIncomingConversation);
+  const notificationsEnabled = useSettingsStore((s) => s.notificationsEnabled);
+  const notificationSound    = useSettingsStore((s) => s.notificationSound);
+  const notificationVibrate  = useSettingsStore((s) => s.notificationVibrate);
+
+  // Re-apply notification handler whenever settings change
+  useEffect(() => {
+    if (isRunningInExpoGo()) return;
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert:  notificationsEnabled,
+        shouldShowBanner: notificationsEnabled,
+        shouldShowList:   notificationsEnabled,
+        shouldPlaySound:  notificationsEnabled && notificationSound,
+        shouldSetBadge:   notificationsEnabled,
+      }),
+    });
+  }, [notificationsEnabled, notificationSound, notificationVibrate]);
 
   useEffect(() => {
-    // expo-notifications v55 uses isRunningInExpoGo() internally before throwing.
-    // Use the exact same check to bail out before any notification API is called.
     if (isRunningInExpoGo()) return;
 
     let foregroundSub: Notifications.EventSubscription | undefined;
     let tapSub:        Notifications.EventSubscription | undefined;
 
     try {
-      registerDevice(user, accessToken);
+      registerDevice(user, sessionId);
 
       foregroundSub = Notifications.addNotificationReceivedListener((notification) => {
         const data = notification.request.content.data as Record<string, string>;
-        if (data?.type !== 'new_message' || !data?.message_id) return;
+        if (data?.type !== 'new_message' || !data?.conversation_id) return;
 
-        const msg: MessageWithSender = {
-          id:              data.message_id,
-          conversation_id: data.conversation_id,
-          sender_id:       data.sender_id,
-          content:         data.content || null,
-          type:            (data.message_type as MessageWithSender['type']) ?? 'text',
-          media_url:       null,
-          status:          'sent',
-          created_at:      data.created_at,
-          sender:          { id: data.sender_id, name: data.sender_name, avatar_url: null },
-        };
-        setPushed(msg);
+        // Wake up the conversation so useQuery refetches are triggered.
+        setIncoming(data.conversation_id);
+
+        // Mark as delivered so the sender sees 2 grey ticks.
+        if (sessionId && data.message_id) {
+          chatService.markDelivered(sessionId, data.message_id).catch(() => {});
+        }
       });
 
       tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -59,12 +70,14 @@ export default function usePushNotifications() {
 
 async function registerDevice(
   user: { id: string } | null,
-  accessToken: string | null,
+  sessionId: string | null,
 ) {
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge:  true,
       }),
@@ -88,9 +101,11 @@ async function registerDevice(
       });
     }
 
-    const tokenData = await Notifications.getDevicePushTokenAsync();
-    if (tokenData.data && user && accessToken) {
-      await authService.saveFcmToken(user.id, tokenData.data, accessToken);
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: '154ace6a-f3c3-4098-b8aa-f49fbed6283d',
+    });
+    if (tokenData.data && sessionId) {
+      await authService.saveFcmToken(sessionId, tokenData.data);
     }
   } catch { /* non-fatal */ }
 }

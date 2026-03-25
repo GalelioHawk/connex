@@ -1,23 +1,20 @@
+/**
+ * messageStore — kept minimal.
+ * With Convex reactive queries, push notifications are only needed to wake
+ * the app. The actual message data is loaded by useQuery automatically.
+ * This store just holds the conversation ID from the last push tap so the
+ * app can navigate to the right chat room.
+ */
 import { create } from 'zustand';
-import type { MessageWithSender } from '../services/chat';
 
 interface MessageStoreState {
-  // Set by the push notification handler when a new message arrives
-  lastPushedMessage: MessageWithSender | null;
-  // Set when any conversation has a new message (triggers ChatList refresh)
-  newMessageConversationId: string | null;
-
-  setPushedMessage: (msg: MessageWithSender) => void;
-  clearPushedMessage: () => void;
+  incomingConversationId: string | null;
+  setIncomingConversation: (conversationId: string) => void;
+  clearIncomingConversation: () => void;
 }
 
 export const useMessageStore = create<MessageStoreState>((set) => ({
-  lastPushedMessage:        null,
-  newMessageConversationId: null,
-
-  setPushedMessage: (msg) =>
-    set({ lastPushedMessage: msg, newMessageConversationId: msg.conversation_id }),
-
-  clearPushedMessage: () =>
-    set({ lastPushedMessage: null }),
+  incomingConversationId: null,
+  setIncomingConversation:  (id) => set({ incomingConversationId: id }),
+  clearIncomingConversation: ()  => set({ incomingConversationId: null }),
 }));

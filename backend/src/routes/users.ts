@@ -11,11 +11,69 @@ const router = Router();
 router.use(requireAuth);
 
 const updateProfileSchema = z.object({
-  name:      z.string().min(2).max(100).trim().optional(),
-  bio:       z.string().max(300).trim().optional(),
-  area_id:   z.string().max(50).optional(),
-  province:  z.string().max(50).optional(),
-  fcm_token: z.string().optional(),
+  name:       z.string().min(2).max(100).trim().optional(),
+  bio:        z.string().max(300).trim().optional(),
+  avatar_url: z.string().url().optional(),
+  area_id:    z.string().max(50).optional(),
+  province:   z.string().max(50).optional(),
+  fcm_token:  z.string().optional(),
+});
+
+// POST /users/me/avatar — upload profile picture via backend (base64)
+// Backend uses service_role so it can create/write to the avatars bucket directly.
+router.post('/me/avatar', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.userId;
+    const { image_base64, mime_type } = req.body as { image_base64?: string; mime_type?: string };
+
+    if (!image_base64) throw new AppError(400, 'image_base64 is required');
+    const mime = mime_type ?? 'image/jpeg';
+    const ext  = mime.split('/')[1] ?? 'jpg';
+    const path = `${userId}/avatar.${ext}`;
+
+    // Ensure bucket exists (service_role can create buckets)
+    await supabase.storage.createBucket('avatars', { public: true }).catch(() => {/* already exists */});
+
+    const buffer = Buffer.from(image_base64, 'base64');
+
+    const { error: uploadErr } = await supabase.storage
+      .from('avatars')
+      .upload(path, buffer, { contentType: mime, upsert: true });
+
+    if (uploadErr) throw new AppError(500, `Upload failed: ${uploadErr.message}`);
+
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+
+    // Persist avatar_url on the user row
+    await supabase.from('users').update({ avatar_url: publicUrl, updated_at: new Date().toISOString() }).eq('id', userId);
+
+    res.json({ avatar_url: publicUrl });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /users/me — update own profile (avatar_url, name, bio, etc.)
+router.patch('/me', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.userId;
+
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, parsed.error.issues[0].message);
+    if (Object.keys(parsed.data).length === 0) throw new AppError(400, 'No fields to update');
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ ...parsed.data, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select('id, name, phone, avatar_url, bio, area_id, province')
+      .single();
+
+    if (error) throw new AppError(500, 'Failed to update profile');
+    res.json({ user: data });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /users/search?q=name

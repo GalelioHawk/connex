@@ -1,78 +1,65 @@
-import { API_URL } from '../constants/api';
-import type { Conversation, Message } from '../types';
+/**
+ * Chat service — one-off mutations only.
+ * Reactive data (message list, conversation list) comes from useQuery in screens.
+ */
+import { convex } from "./convex";
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 
-async function request<T>(
-  method: string,
-  path: string,
-  token: string,
-  body?: object,
-): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? 'Request failed');
-  return data as T;
-}
-
-export interface ConvoWithMeta extends Conversation {
-  last_message:  Message | null;
-  other_user:    { id: string; name: string; avatar_url: string | null } | null;
-  unread_count:  number;
-}
-
-export interface MessageWithSender extends Message {
-  sender: { id: string; name: string; avatar_url: string | null };
-}
+type SessionId = Id<"sessions">;
 
 export const chatService = {
-  searchUsers(q: string, token: string) {
-    return request<{ users: { id: string; name: string; phone: string; avatar_url: string | null }[] }>(
-      'GET', `/chat/users/search?q=${encodeURIComponent(q)}`, token,
-    );
-  },
-
-  getConversations(token: string) {
-    return request<{ conversations: ConvoWithMeta[] }>('GET', '/chat/conversations', token);
-  },
-
   createConversation(
-    type: 'direct' | 'group',
+    sessionId: string,
+    type: "direct" | "group",
     memberIds: string[],
-    name: string | undefined,
-    token: string,
+    name?: string,
   ) {
-    return request<{ conversation: Conversation; existed: boolean }>(
-      'POST', '/chat/conversations', token,
-      { type, member_ids: memberIds, name },
-    );
+    return convex.mutation(api.chat.createConversation, {
+      sessionId: sessionId as SessionId,
+      type,
+      memberIds: memberIds as Id<"users">[],
+      name,
+    });
   },
 
-  getMessages(conversationId: string, token: string, before?: string, after?: string) {
-    const qs = new URLSearchParams();
-    if (before) qs.set('before', before);
-    if (after)  qs.set('after', after);
-    const query = qs.toString() ? `?${qs.toString()}` : '';
-    return request<{ messages: MessageWithSender[] }>(
-      'GET', `/chat/conversations/${conversationId}/messages${query}`, token,
-    );
+  sendMessage(sessionId: string, conversationId: string, content: string) {
+    return convex.mutation(api.chat.sendMessage, {
+      sessionId:      sessionId      as SessionId,
+      conversationId: conversationId as Id<"conversations">,
+      content,
+    });
   },
 
-  sendMessage(conversationId: string, content: string, token: string) {
-    return request<{ message: MessageWithSender }>(
-      'POST', `/chat/conversations/${conversationId}/messages`, token,
-      { content, type: 'text' },
-    );
+  markRead(sessionId: string, conversationId: string) {
+    return convex.mutation(api.chat.markRead, {
+      sessionId:      sessionId      as SessionId,
+      conversationId: conversationId as Id<"conversations">,
+    });
   },
 
-  markRead(conversationId: string, token: string) {
-    return request<{ ok: boolean }>(
-      'PATCH', `/chat/conversations/${conversationId}/read`, token,
-    );
+  markDelivered(sessionId: string, messageId: string) {
+    return convex.mutation(api.chat.markDelivered, {
+      sessionId: sessionId as SessionId,
+      messageId: messageId as Id<"messages">,
+    });
+  },
+
+  deleteMessage(sessionId: string, messageId: string, deleteForEveryone: boolean) {
+    return convex.mutation(api.chat.deleteMessage, {
+      sessionId:         sessionId as SessionId,
+      messageId:         messageId as Id<"messages">,
+      deleteForEveryone,
+    });
+  },
+
+  searchUsers(sessionId: string, q: string) {
+    return convex.query(api.users.search, {
+      sessionId: sessionId as SessionId,
+      q,
+    });
   },
 };
+
+// Re-export types so screens don't need to import from Convex directly
+export type { Id };

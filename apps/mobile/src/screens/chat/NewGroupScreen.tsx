@@ -18,7 +18,7 @@ interface SearchUser {
 
 export default function NewGroupScreen() {
   const navigation  = useNavigation<any>();
-  const accessToken = useAuthStore((s) => s.accessToken)!;
+  const sessionId = useAuthStore((s) => s.sessionId)!;
 
   const [groupName, setGroupName]   = useState('');
   const [search, setSearch]         = useState('');
@@ -35,7 +35,7 @@ export default function NewGroupScreen() {
     searchTimer.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const { users } = await chatService.searchUsers(text.trim(), accessToken);
+        const users = await chatService.searchUsers(sessionId, text.trim());
         setResults(users.filter((u) => !selected.find((s) => s.id === u.id)));
       } catch { /* ignore */ }
       finally { setSearching(false); }
@@ -55,10 +55,10 @@ export default function NewGroupScreen() {
     if (selected.length === 0) { Alert.alert('No members', 'Add at least one person to the group'); return; }
     setCreating(true);
     try {
-      const { conversation } = await chatService.createConversation(
-        'group', selected.map((u) => u.id), groupName.trim(), accessToken,
+      const { conversationId } = await chatService.createConversation(
+        sessionId, 'group', selected.map((u) => u.id), groupName.trim(),
       );
-      navigation.replace('ChatRoom', { conversationId: conversation.id, title: groupName.trim() });
+      navigation.replace('ChatRoom', { conversationId, title: groupName.trim() });
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Failed to create group');
     } finally {

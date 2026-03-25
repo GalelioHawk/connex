@@ -7,7 +7,7 @@ This file is the single source of truth for all coding decisions on this project
 
 ## WHAT IS CONNEX
 
-Connex is a South African super app. The founder does not code — AI models are the developers.
+Connex is an **African** super app. The founder does not code — AI models are the developers.
 
 **Phase 1 (current):** Three modules launching together:
 - **Chat** — real-time messaging (groups, 1:1, status), with SOS emergency button wired to trusted contacts, and loadshedding alerts integrated
@@ -25,49 +25,43 @@ Connex is a South African super app. The founder does not code — AI models are
 ### Mobile
 | Tool | Version | Purpose |
 |---|---|---|
-| Expo (managed workflow) | ~52.x | Core mobile framework |
-| React Native | 0.76.x | Bundled with Expo |
+| Expo (managed workflow) | ~55.x | Core mobile framework |
+| React Native | 0.83.x | Bundled with Expo |
 | TypeScript | ^5.x | All code is TypeScript — no plain JS |
-| React Navigation v6 | ^6.x | Navigation (Stack + BottomTabs) |
-| NativeWind | ^4.x | Tailwind CSS styling in React Native |
-| Zustand | ^5.x | Global state management |
-| @supabase/supabase-js | ^2.x | Supabase client (auth, DB, Realtime) |
-| Expo Notifications | ~0.29.x | Push notification handling |
-| Expo Image Picker | ~16.x | Camera + gallery image selection |
-| Expo Haptics | ~14.x | Haptic feedback (SOS button hold) |
-| react-native-pdf | ^6.x | In-app PDF viewer for Edu |
+| React Navigation v7 | ^7.x | Navigation (Stack + BottomTabs) |
+| Zustand | ^5.x | Local/auth state only (NOT server state) |
+| convex | ^1.x | Database, realtime, auth, file storage, server functions |
+| bcryptjs | ^3.x | Password hashing (used inside Convex actions) |
+| Expo Notifications | ~55.x | Push notification handling |
+| Expo Image Picker | ~55.x | Camera + gallery image selection |
+| Expo Haptics | ~55.x | Haptic feedback (SOS button hold) |
+| react-native-webview | ^13.x | In-app PDF viewer for Edu |
 | react-native-maps | ^1.x | Map view for Alerts map screen |
 | dayjs | ^1.x | Date/time formatting |
-| Zod | ^3.x | Schema validation |
 
-### Backend
-| Tool | Version | Purpose |
-|---|---|---|
-| Node.js | 20.x LTS | Runtime |
-| Express | ^4.x | HTTP server |
-| TypeScript | ^5.x | All code is TypeScript — no plain JS |
-| @supabase/supabase-js | ^2.x | Supabase admin client (service_role key) |
-| jsonwebtoken | ^9.x | JWT auth tokens |
-| bcryptjs | ^2.x | Password hashing |
-| Zod | ^3.x | Request body validation |
-| ioredis | ^5.x | Upstash Redis client |
-| node-cron | ^3.x | Scheduled jobs (loadshedding refresh) |
-| axios | ^1.x | HTTP client for EskomSePush API |
-| cors | ^2.x | CORS middleware |
-| helmet | ^8.x | Security headers |
-| express-rate-limit | ^7.x | Rate limiting |
-| firebase-admin | ^12.x | Send FCM push notifications |
-| dotenv | ^16.x | Load .env |
+### Convex (replaces Express + Supabase + Redis)
+| Convex feature | Purpose |
+|---|---|
+| Database (document store) | All app data — users, chats, messages, feed, edu |
+| Queries (reactive) | Read data — auto-push updates to mobile, zero polling |
+| Mutations | Write data — transactional, validated |
+| Actions (Node.js env) | Side effects: FCM push, EskomSePush API calls, bcrypt hashing |
+| Scheduled functions | Loadshedding data refresh every 4 hours |
+| File storage | Avatar uploads, Edu PDFs |
+| Auth (session-based) | Phone + password, sessionId stored in Zustand/AsyncStorage |
 
 ### Infrastructure
-| Service | Purpose | URL / ID |
-|---|---|---|
-| Supabase | PostgreSQL DB, Auth, Realtime (chat), Storage | kirpihmdkpdvekovnzxd.supabase.co |
-| Railway | Backend hosting (auto-deploy from GitHub) | serene-creation-production.up.railway.app |
-| Upstash Redis | Session cache, rate limiting, loadshedding cache | profound-gazelle-62286.upstash.io |
-| Firebase FCM | Push notifications | project: connex-f9119, sender ID: 821743814832 |
-| GitHub | Source code, CI/CD trigger for Railway | github.com/GalelioHawk/connex |
-| Expo EAS | Mobile builds and distribution | slug: connex, bundle: com.connex.app |
+| Service | Purpose |
+|---|---|
+| Convex | Everything: DB, Realtime, Functions, Storage, Cron |
+| Firebase FCM | Push notifications (called from Convex actions) |
+| Expo EAS | Mobile builds and distribution |
+
+### Archived (no longer used)
+- ~~Supabase~~ — replaced by Convex
+- ~~Express backend on Railway~~ — replaced by Convex functions
+- ~~Upstash Redis~~ — replaced by Convex (no caching layer needed, queries are reactive)
+- The `backend/` directory is archived. Do not add code to it.
 
 ---
 
@@ -77,121 +71,134 @@ Connex is a South African super app. The founder does not code — AI models are
 connex/
 ├── apps/
 │   └── mobile/                     # Expo React Native app
+│       ├── convex/                  # ← ALL BACKEND LOGIC LIVES HERE
+│       │   ├── schema.ts            # Database schema (all tables)
+│       │   ├── auth.ts              # register, login, logout actions
+│       │   ├── users.ts             # user queries and mutations
+│       │   ├── chat.ts              # chat queries and mutations
+│       │   ├── feed.ts              # feed queries and mutations
+│       │   ├── alerts.ts            # alerts + loadshedding scheduled action
+│       │   ├── sos.ts               # SOS mutations
+│       │   ├── edu.ts               # edu queries
+│       │   ├── push.ts              # internal FCM push action
+│       │   └── _generated/          # Auto-generated by CLI — never edit
 │       ├── src/
-│       │   ├── components/         # Reusable UI components
-│       │   │   ├── shared/         # Buttons, inputs, avatars, loaders
-│       │   │   ├── chat/           # MessageBubble, ChatInput, ConvoListItem
-│       │   │   ├── feed/           # PostCard, AlertBadge, AlertCategoryChip
-│       │   │   └── edu/            # PaperCard, SubjectGrid
-│       │   ├── screens/            # One file per screen
-│       │   │   ├── auth/           # OnboardingScreen, RegisterScreen, LoginScreen
-│       │   │   ├── chat/           # ChatListScreen, ChatRoomScreen, etc.
-│       │   │   ├── feed/           # FeedHomeScreen, AlertsTabScreen, etc.
-│       │   │   ├── edu/            # EduHomeScreen, PaperListScreen, etc.
-│       │   │   ├── sos/            # SOSScreen, SOSContactsScreen
-│       │   │   └── profile/        # ProfileScreen, EditProfileScreen, SettingsScreen
-│       │   ├── navigation/         # Stack and tab navigator definitions
-│       │   ├── store/              # Zustand stores (auth, chat, feed, alerts)
-│       │   ├── services/           # API call functions (auth.ts, chat.ts, feed.ts, etc.)
-│       │   ├── hooks/              # Custom React hooks
-│       │   ├── utils/              # Helpers (date, format, storage)
-│       │   ├── types/              # Shared TypeScript types/interfaces
-│       │   └── constants/          # Colors, API URLs, category lists
-│       ├── assets/                 # App icon, splash screen, fonts
-│       ├── app.json                # Expo config
-│       ├── .env                    # NEVER commit — copy from .env.example
-│       └── .env.example            # ✅ committed — template with blank values
+│       │   ├── components/          # Reusable UI components
+│       │   │   ├── shared/          # Buttons, inputs, avatars, loaders
+│       │   │   ├── chat/            # MessageBubble, ChatInput, ConvoListItem
+│       │   │   ├── feed/            # PostCard, AlertBadge, AlertCategoryChip
+│       │   │   └── edu/             # PaperCard, SubjectGrid
+│       │   ├── screens/             # One file per screen
+│       │   │   ├── auth/            # OnboardingScreen, RegisterScreen, LoginScreen
+│       │   │   ├── chat/            # ChatListScreen, ChatRoomScreen, etc.
+│       │   │   ├── feed/            # FeedHomeScreen, AlertsTabScreen, etc.
+│       │   │   ├── edu/             # EduHomeScreen, PaperListScreen, etc.
+│       │   │   ├── sos/             # SOSScreen, SOSContactsScreen
+│       │   │   └── profile/         # ProfileScreen, EditProfileScreen, SettingsScreen
+│       │   ├── navigation/          # Stack and tab navigator definitions
+│       │   ├── store/               # Zustand stores (auth only — server state via Convex)
+│       │   ├── services/            # Thin wrappers around Convex client calls
+│       │   ├── hooks/               # Custom React hooks
+│       │   ├── utils/               # Helpers (date, format, storage)
+│       │   ├── types/               # Shared TypeScript types/interfaces
+│       │   └── constants/           # Colors, category lists
+│       ├── assets/                  # App icon, splash screen, fonts
+│       ├── app.json                 # Expo config
+│       ├── convex.json              # Convex project config (generated by CLI)
+│       ├── .env                     # NEVER commit — copy from .env.example
+│       └── .env.example             # ✅ committed — template with blank values
 │
-├── backend/
-│   ├── src/
-│   │   ├── routes/                 # Express route files
-│   │   │   ├── auth.ts             # POST /auth/register, /auth/login, /auth/logout
-│   │   │   ├── users.ts            # GET/PATCH /users/:id, GET /users/search
-│   │   │   ├── chat.ts             # All /chat/* endpoints
-│   │   │   ├── feed.ts             # All /feed/* endpoints
-│   │   │   ├── alerts.ts           # GET /alerts/loadshedding, /alerts/loadshedding/stage
-│   │   │   ├── sos.ts              # All /sos/* endpoints
-│   │   │   └── edu.ts              # All /edu/* endpoints
-│   │   ├── middleware/             # Auth middleware, rate limiter, error handler
-│   │   ├── services/               # Business logic (separate from routes)
-│   │   │   ├── supabase.ts         # Supabase admin client (singleton)
-│   │   │   ├── redis.ts            # Upstash Redis client (singleton)
-│   │   │   ├── fcm.ts              # Firebase push notification sender
-│   │   │   └── eskomsepush.ts      # EskomSePush API + Redis caching
-│   │   ├── jobs/                   # node-cron scheduled jobs
-│   │   │   └── refreshLoadshedding.ts
-│   │   ├── validators/             # Zod schemas for request validation
-│   │   ├── types/                  # Shared TypeScript types
-│   │   └── app.ts                  # Express app setup + route mounting
-│   ├── server.ts                   # Entry point (imports app.ts, starts server)
-│   ├── .env                        # NEVER commit — copy from .env.example
-│   └── .env.example                # ✅ committed — template with blank values
-│
-├── database/
-│   ├── schemas/
-│   │   └── schema.sql              # ✅ All CREATE TABLE statements for Supabase
-│   ├── migrations/                 # Future schema changes (numbered: 001_add_column.sql)
-│   └── seeds/                      # Test/dev seed data
+├── backend/                         # ARCHIVED — do not use or modify
 │
 ├── docs/
-│   ├── business/                   # Business report + master workbook
-│   └── technical/                  # Technical plan + project tracker
+│   ├── business/                    # Business report + master workbook
+│   └── technical/                   # Technical plan + project tracker
 │
-├── config/                         # Shared config (e.g. eslint, prettier, tsconfig base)
-├── scripts/                        # Utility scripts (document generators, etc.)
-└── CLAUDE.md                       # ← YOU ARE HERE — read before coding
+├── scripts/                         # Utility scripts
+└── CLAUDE.md                        # ← YOU ARE HERE — read before coding
 ```
+
+---
+
+## HOW CONVEX WORKS — CRITICAL TO UNDERSTAND
+
+### Auth pattern
+There is NO JWT token refresh, NO Supabase session, NO access_token/refresh_token pair.
+
+Auth is session-based:
+1. `register` / `login` Convex actions → hash password with bcrypt → create a session document → return `sessionId` (string)
+2. Mobile stores `sessionId` in Zustand (persisted to AsyncStorage)
+3. All protected Convex functions accept `sessionId: v.id("sessions")` as first arg
+4. Functions call `requireSession(ctx, sessionId)` which validates the session and returns the user
+
+### Realtime pattern
+There is NO Supabase channel subscription, NO polling interval, NO AppState listener for catch-up.
+
+Realtime is automatic:
+```ts
+// This single line replaces ~100 lines of realtime subscription + polling code:
+const messages = useQuery(api.chat.listMessages, sessionId ? { sessionId, conversationId } : "skip");
+```
+`useQuery` opens a WebSocket to Convex, subscribes to the query result, and re-renders the component automatically whenever the underlying data changes. No setup, no teardown, no polling needed.
+
+### Function types
+- `query` — read-only, runs in V8 isolate, reactive, cached. Cannot use bcrypt or fetch.
+- `mutation` — write, transactional, runs in V8 isolate. Cannot use bcrypt or fetch.
+- `action` — Node.js environment, can use npm packages (bcrypt, FCM, external APIs), NOT reactive.
+- `internalMutation`, `internalQuery`, `internalAction` — same but can only be called from other Convex functions (not from mobile).
+
+### File structure in convex/
+- Server-side functions: `convex/*.ts`
+- Schema: `convex/schema.ts`
+- Generated types: `convex/_generated/` — NEVER edit, regenerated by `npx convex dev`
+- Mobile imports generated API: `import { api } from "../../convex/_generated/api"`
 
 ---
 
 ## CODE CONVENTIONS — FOLLOW THESE EXACTLY
 
 ### TypeScript
-- **All code is TypeScript.** No `.js` files anywhere in `src/`.
-- Define types/interfaces in `src/types/`. Import them where needed.
+- **All code is TypeScript.** No `.js` files anywhere.
 - Use `interface` for object shapes, `type` for unions/aliases.
+- In Convex functions, use `v.` validators from `"convex/values"` for all function args.
 - Never use `any`. Use `unknown` and narrow if you must.
-- Enable `strict: true` in tsconfig.
 
 ### Naming
 - Files: `camelCase.ts` for utilities/services, `PascalCase.tsx` for React components/screens
 - Components: `PascalCase` (e.g. `MessageBubble`, `PostCard`)
 - Functions/variables: `camelCase`
 - Constants: `UPPER_SNAKE_CASE`
-- Database columns: `snake_case` (PostgreSQL convention)
-- API routes: `kebab-case` (e.g. `/chat/conversations/:id/members`)
+- Convex table/field names: `camelCase` (Convex convention, unlike Supabase snake_case)
+- In type definitions: `snake_case` fields for data returned to mobile (for backward compat)
 
 ### React Native / Expo
-- Use **NativeWind** (Tailwind) for all styling. No `StyleSheet.create()` unless absolutely necessary.
+- Use `StyleSheet.create()` for all styling. NativeWind was unreliable — do not use className.
 - Use **React Navigation** for all screen routing. No custom routing.
-- Use **Zustand** for global state. No Redux, no Context API for global state.
+- Use **Zustand** for auth state only. Server state (conversations, messages, feed) comes from `useQuery`.
 - One screen per file. One component per file (unless trivially small).
-- All API calls go through `src/services/` — never call the API directly from a screen.
-- Use custom hooks (`src/hooks/`) for any logic that involves side effects or state.
+- Convex hooks (`useQuery`, `useMutation`, `useAction`) are used directly in screens for server data.
+- Service files in `src/services/` are for one-off actions (actions, mutations) not reactive data.
 
-### Backend (Express)
-- All routes validated with **Zod** before any business logic.
-- Auth middleware runs before any protected route.
-- Never put business logic directly in route handlers — use service functions.
-- All database access goes through the Supabase client in `src/services/supabase.ts`.
-- All Redis access goes through the client in `src/services/redis.ts`.
-- Errors are caught and forwarded to the central error handler middleware.
-- Use `async/await` everywhere. No raw `.then()` chains.
+### Convex functions
+- All function args validated with `v.` validators — this replaces Zod for backend validation.
+- All protected functions start with: `const { user, userId } = await requireSession(ctx, args.sessionId);`
+- Mutations handle DB writes. Actions handle side effects + call internal mutations for DB.
+- Use `internalMutation`/`internalAction` for functions that should only be called server-side.
+- Password hashing: ALWAYS in an `action` (Node.js env). Never in a `query` or `mutation`.
 
 ### Security — NON-NEGOTIABLE
-- **NEVER** put `SUPABASE_SERVICE_ROLE_KEY` in the mobile app. Backend only.
-- **NEVER** commit `.env` files. They are in `.gitignore`.
-- **ALWAYS** validate request bodies with Zod before processing.
-- **ALWAYS** check auth middleware passes before accessing protected data.
-- **ALWAYS** hash passwords with bcrypt before storing. Never store plain text.
-- Rate limit all auth endpoints (register, login) at a minimum.
+- **NEVER** put Convex deployment URL secret keys in client code. `EXPO_PUBLIC_CONVEX_URL` is safe (it's public).
+- **NEVER** commit `.env` files.
+- **ALWAYS** call `requireSession` at the top of every protected function.
+- **ALWAYS** hash passwords with bcrypt in actions before storing.
+- Rate limiting: Convex has built-in rate limiting via function scheduling + counters.
 
 ---
 
 ## KEY PRODUCT DECISIONS — DO NOT REINTERPRET
 
 **Chat:**
-- Supabase Realtime (WebSocket) for live messages. NOT WebRTC. NOT Socket.io. NOT Signal Protocol.
+- Convex `useQuery(api.chat.listMessages, ...)` for live messages. Fully reactive.
 - Message status: sent → delivered → read (double tick logic).
 - Group chats: name + image + members + admin role.
 
@@ -199,25 +206,26 @@ connex/
 - Press-and-hold button (3 seconds) inside the Chat tab.
 - Haptic feedback + countdown animation during hold.
 - Mutual consent required — both users must accept before they are SOS contacts.
-- Phase 1: FCM push notification to all accepted contacts only.
+- Phase 1: FCM push via Convex internal action to all accepted contacts.
 - Phase 2 (later): adds live GPS location.
 - Phase 3 (later): adds SAPS/emergency services integration.
 
 **Alerts system (dual layer):**
-- Layer 1 (official): EskomSePush API data — fetched every 4 hours by backend cron, cached in Redis, served via `/alerts/loadshedding`.
-- Layer 2 (community): Users optionally tag their Feed posts with an alert category (Utility, Safety, Traffic, Water, Weather, Community). These surface in the Feed's Alerts tab, filtered by `area_id`.
-- The Alerts tab in the Feed combines BOTH layers.
-- `area_id` is set on the user's profile and copied to posts at creation time.
+- Layer 1 (official): EskomSePush API data — fetched every 4 hours by Convex scheduled action, stored in Convex DB, served via `api.alerts.getLoadshedding`.
+- Layer 2 (community): Users optionally tag their Feed posts with an alert category. These surface in the Feed's Alerts tab, filtered by `areaId`.
+- `areaId` is set on the user's profile and copied to posts at creation time.
 
 **Edu:**
 - Free to all users — no paywall in Phase 1.
-- PDFs served via signed Supabase Storage URLs (not public URLs).
+- PDFs served via Convex file storage URLs or external URLs.
 - Grade 10, 11, 12 only in Phase 1.
 
 **Authentication:**
-- Phone number + password (not OTP-only). Supabase Auth for OTP verification.
-- JWT stored in AsyncStorage (via Zustand persist).
-- Refresh token stored in Redis with TTL matching `JWT_REFRESH_EXPIRES_IN`.
+- Phone number + password.
+- `register`/`login` are Convex **actions** (bcrypt runs in Node.js env).
+- Session stored as a document in Convex `sessions` table.
+- `sessionId` stored in Zustand (persisted to AsyncStorage). This replaces access_token/refresh_token.
+- Sessions expire after 30 days. On expiry, clear auth and redirect to login.
 
 ---
 
@@ -226,53 +234,58 @@ connex/
 ```
 main        — production only. Never commit directly here.
 dev         — integration branch. Merge feature branches here first.
-feature/*   — one branch per feature (e.g. feature/chat-realtime)
+feature/*   — one branch per feature
 fix/*       — bug fixes
 ```
 
 - Branch from `dev`, not `main`.
-- PR to `dev` first. Only merge `dev` → `main` when releasing.
-- Commit messages: `type: short description` (e.g. `feat: add SOS trigger endpoint`, `fix: message status not updating`)
+- Commit messages: `type: short description`
 
 ---
 
 ## WHAT NOT TO DO
 
-- Do NOT install packages not listed in the tech stack without asking first.
-- Do NOT use Next.js — this is a mobile app. There is no web frontend in Phase 1.
-- Do NOT use MongoDB — the database is Supabase (PostgreSQL) only.
-- Do NOT use Redis Cloud — use Upstash Redis only.
-- Do NOT use Socket.io — Supabase Realtime handles WebSocket connections.
+- Do NOT use Supabase anywhere. It has been fully replaced by Convex.
+- Do NOT add code to the `backend/` directory. It is archived.
+- Do NOT use Socket.io — Convex Realtime handles WebSocket connections.
 - Do NOT use React Context API for global state — use Zustand.
-- Do NOT hardcode any API keys, URLs, or secrets — use .env variables.
-- Do NOT skip Zod validation on any API endpoint.
+- Do NOT hardcode any API keys, URLs, or secrets — use Convex environment variables.
+- Do NOT use polling (setInterval for data refresh) — `useQuery` is reactive.
+- Do NOT call `useQuery` without the `"skip"` pattern when sessionId may be null.
+- Do NOT put business logic (DB writes) in Convex actions — use `ctx.runMutation(internal.*)`.
 - Do NOT commit directly to main.
-- Do NOT make backend routes publicly accessible without auth middleware (except /auth/register and /auth/login).
+- Do NOT use NativeWind className for styling — use StyleSheet.create().
 
 ---
 
 ## USEFUL REFERENCES
 
-- Supabase docs: https://supabase.com/docs
+- Convex docs: https://docs.convex.dev
+- Convex React: https://docs.convex.dev/client/react
+- Convex schema: https://docs.convex.dev/database/schemas
+- Convex auth patterns: https://docs.convex.dev/auth
 - Expo docs: https://docs.expo.dev
 - React Navigation: https://reactnavigation.org/docs/getting-started
-- NativeWind: https://www.nativewind.dev/v4/overview
 - Zustand: https://docs.pmnd.rs/zustand/getting-started/introduction
-- Railway deploy: https://docs.railway.app
-- Upstash Redis: https://upstash.com/docs/redis/overall/getstarted
+- Firebase FCM HTTP v1: https://firebase.google.com/docs/cloud-messaging/send-message
 - EskomSePush API: https://eskomsepush.app/
-- Firebase Admin SDK: https://firebase.google.com/docs/admin/setup
 
 ---
 
-## PHASE STATUS
+## FIRST-TIME SETUP (for new dev environment)
 
-| Phase | Status | Started | Target Complete |
-|---|---|---|---|
-| Phase 0 — Infrastructure | ✅ Complete | — | 3 March 2026 |
-| Phase 1 — MVP (Chat, Feed, Edu) | 🔄 In Progress | 3 March 2026 | ~25 May 2026 |
-| Phase 2 — Connex Pay | ⏳ Pending | — | TBD |
-| Phase 3 — Connex Clips | ⏳ Pending | — | TBD |
-| Phase 4 — Connex Logistics | ⏳ Pending | — | TBD |
+```bash
+cd apps/mobile
+npm install
+npx convex dev          # creates convex.json, links to Convex project, generates _generated/
+# Set env vars in Convex dashboard:
+#   FCM_SERVICE_ACCOUNT_JSON   (Firebase service account JSON, stringified)
+#   ESKOMSEPUSH_API_KEY        (EskomSePush API key)
+# Set in apps/mobile/.env:
+#   EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
+expo start
+```
 
-*Last updated: 3 March 2026 | Phase 1 — MVP Build in progress*
+---
+
+*Last updated: March 2026 | Phase 1 — Convex migration*

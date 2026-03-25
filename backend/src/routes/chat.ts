@@ -74,7 +74,7 @@ router.get('/conversations', async (req: Request, res: Response, next: NextFunct
         // Last message
         const { data: msgs } = await supabase
           .from('messages')
-          .select('id, content, type, created_at, sender_id')
+          .select('id, content, type, created_at, sender_id, status')
           .eq('conversation_id', conv.id)
           .order('created_at', { ascending: false })
           .limit(1);
@@ -223,7 +223,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.userId;
-      const convId = req.params.id;
+      const convId = String(req.params.id);
       const limit  = Math.min(Number(req.query.limit ?? 50), 100);
       const before = req.query.before as string | undefined;
 
@@ -272,7 +272,7 @@ router.post(
       if (!parsed.success) throw new AppError(400, parsed.error.issues[0].message);
 
       const userId = req.user!.userId;
-      const convId = req.params.id;
+      const convId = String(req.params.id);
 
       // Verify membership
       const { data: membership } = await supabase
@@ -388,11 +388,22 @@ router.patch(
       const userId = req.user!.userId;
       const convId = req.params.id;
 
+      const now = new Date().toISOString();
+
       await supabase
         .from('conversation_members')
-        .update({ last_read_at: new Date().toISOString() })
+        .update({ last_read_at: now })
         .eq('conversation_id', convId)
         .eq('user_id', userId);
+
+      // Mark all unread messages in this conversation as read.
+      // This triggers Realtime UPDATE events so the sender sees green ticks.
+      await supabase
+        .from('messages')
+        .update({ status: 'read' })
+        .eq('conversation_id', convId)
+        .neq('sender_id', userId)
+        .in('status', ['sent', 'delivered']);
 
       res.json({ ok: true });
     } catch (err) {
@@ -418,6 +429,49 @@ router.patch(
         .eq('id', req.params.id);
 
       if (error) throw new AppError(500, 'Failed to update status');
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── DELETE /chat/messages/:id ───────────────────────────────────────────────
+// Soft-delete a message. Only the sender can delete their own message.
+// delete_for_everyone=true sets deleted_at (visible to all as "deleted").
+// delete_for_everyone=false removes it from the sender's view only (client-side).
+router.delete(
+  '/messages/:id',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId           = req.user!.userId;
+      const { delete_for_everyone } = req.body as { delete_for_everyone?: boolean };
+
+      // Verify the message belongs to this user
+      const { data: msg, error: fetchErr } = await supabase
+        .from('messages')
+        .select('id, sender_id')
+        .eq('id', req.params.id)
+        .single();
+
+      if (fetchErr || !msg) throw new AppError(404, 'Message not found');
+      if (msg.sender_id !== userId) throw new AppError(403, 'Cannot delete another user\'s message');
+
+      const updatePayload: Record<string, unknown> = {
+        deleted_at: new Date().toISOString(),
+      };
+      // Delete for everyone also wipes the content so others see "deleted"
+      if (delete_for_everyone) {
+        updatePayload.content = null;
+      }
+
+      const { error } = await supabase
+        .from('messages')
+        .update(updatePayload)
+        .eq('id', req.params.id);
+
+      if (error) throw new AppError(500, 'Failed to delete message');
+
       res.json({ ok: true });
     } catch (err) {
       next(err);
