@@ -132,3 +132,16 @@ Finish and ship the website updates first, then push/deploy.
 ## Next Immediate Task
 1. Continue with next product area (mobile/backend) using this file for continuity.
 2. Optionally tighten legal language with counsel-reviewed jurisdiction text if needed.
+
+### 2026-06-11 (Claude)
+- Full redesign of the website from scratch (T-027). New design system in `style.css`:
+  dark green-black theme, Bricolage Grotesque display + Instrument Sans body + Spline Sans Mono
+  accents, scroll reveals, marquee ticker, CSS phone mockup of the actual app in the hero.
+- Rewrote: index, features, about, security, contact, 404, script.js. Privacy/terms re-skinned
+  with legal text preserved verbatim. pitch.html and logo-export.html untouched (standalone).
+- Honesty pass: removed fabricated stats counters; store badges now show "Coming soon";
+  all CTAs are "Get early access" → mailto:hello@connexsa.co.za. Constraints preserved:
+  zero "South Africa" strings in marketing/legal copy; POPIA references kept.
+- sitemap.xml lastmod → 2026-06-11. Verified: tag balance OK on all pages, no broken local
+  links, no self-praise words in copy.
+- NOT yet committed/pushed — awaiting founder review before the live site changes.
