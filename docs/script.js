@@ -96,6 +96,18 @@
     var form = document.querySelector('[data-contact-form]');
     if (!form) return;
 
+    var topicSelect = form.querySelector('#cf-topic');
+    if (topicSelect && window.URLSearchParams) {
+      var topicParam = new URLSearchParams(window.location.search).get('topic');
+      if (topicParam) {
+        Array.prototype.forEach.call(topicSelect.options, function (option) {
+          if (option.text.toLowerCase() === topicParam.toLowerCase()) {
+            topicSelect.value = option.text;
+          }
+        });
+      }
+    }
+
     form.addEventListener('submit', function (event) {
       event.preventDefault();
 
