@@ -960,21 +960,21 @@
         <div class="feat-icon">⚡</div>
         <div class="feat-body">
           <h4>Real-time Messaging <span class="live-badge">LIVE</span></h4>
-          <p>Supabase Realtime WebSocket delivery. Message ticks (sent → delivered → read). Group chats, 1:1 messaging, camera integration.</p>
+          <p>Convex reactive queries deliver live conversations without polling. Message ticks, group and direct chats, requests, and camera integration are implemented.</p>
         </div>
       </div>
       <div class="feat">
         <div class="feat-icon">🔔</div>
         <div class="feat-body">
           <h4>Push Notifications <span class="live-badge">LIVE</span></h4>
-          <p>Firebase FCM integration. Instant delivery for new messages and SOS alerts, even when app is closed.</p>
+          <p>Expo push-token integration for messages, calls, and SOS alerts. Final background and terminated-state device validation remains part of alpha QA.</p>
         </div>
       </div>
       <div class="feat">
         <div class="feat-icon">🔐</div>
         <div class="feat-body">
           <h4>Secure Authentication <span class="live-badge">LIVE</span></h4>
-          <p>Phone number + password auth via Supabase. JWT session management, auto token refresh, persistent login.</p>
+          <p>Phone number and bcrypt-protected password authentication with 30-day Convex sessions persisted securely on the device.</p>
         </div>
       </div>
       <div class="feat">
@@ -995,7 +995,7 @@
         <div class="feat-icon">☁️</div>
         <div class="feat-body">
           <h4>Scalable Backend <span class="live-badge">LIVE</span></h4>
-          <p>Express + Supabase PostgreSQL + Redis caching. Designed for millions of concurrent users from day one.</p>
+          <p>Convex provides the database, reactive queries, transactional mutations, scheduled jobs, storage, and server actions in one managed backend.</p>
         </div>
       </div>
     </div>
@@ -1050,17 +1050,17 @@
       <div class="milestone">
         <div class="m-dot"></div>
         <div class="m-date">✓ Done</div>
-        <div class="m-text"><strong>Full backend API live</strong> — authentication, chat, alerts, SOS, and edu routes deployed on production infrastructure</div>
+        <div class="m-text"><strong>Convex backend implemented</strong> — authentication, chat, feed, alerts, SOS, calls, status, and Edu functions are integrated with the mobile client</div>
       </div>
       <div class="milestone">
         <div class="m-dot"></div>
         <div class="m-date">✓ Done</div>
-        <div class="m-text"><strong>Real-time messaging functional</strong> — sub-100ms delivery via Supabase Realtime WebSocket, double-tick read receipts working</div>
+        <div class="m-text"><strong>Real-time messaging functional</strong> — Convex subscriptions update conversations automatically and sent, delivered, and read states are implemented</div>
       </div>
       <div class="milestone">
         <div class="m-dot"></div>
         <div class="m-date">✓ Done</div>
-        <div class="m-text"><strong>Push notifications live</strong> — Firebase FCM delivering messages and SOS alerts to locked devices</div>
+        <div class="m-text"><strong>Push pipeline implemented</strong> — Expo push delivery is wired for messages, calls, and SOS; final multi-device delivery QA is in progress</div>
       </div>
       <div class="milestone">
         <div class="m-dot"></div>
@@ -1070,7 +1070,7 @@
       <div class="milestone">
         <div class="m-dot"></div>
         <div class="m-date">Next</div>
-        <div class="m-text"><strong>App store submission</strong> — Android and iOS builds ready for public launch pending accelerator infrastructure support</div>
+        <div class="m-text"><strong>Alpha hardening</strong> — complete provider credentials, device-service validation, moderation controls, legal review, and store-readiness checks</div>
       </div>
     </div>
   </section>
@@ -1210,7 +1210,7 @@
       <div class="ask-use">
         <div class="pct" style="font-size:40px;">🧭</div>
         <h4>Technical Mentorship</h4>
-        <p>Expert guidance on building Connex Pay (fintech compliance, FSCA licensing) and scaling real-time infrastructure to millions of concurrent African users.</p>
+        <p>Expert guidance on validating Connex Pay with licensed partners and regulators, and on scaling infrastructure only as measured user demand grows.</p>
       </div>
       <div class="ask-use">
         <div class="pct" style="font-size:40px;">🌍</div>
