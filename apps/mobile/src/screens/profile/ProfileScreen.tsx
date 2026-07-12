@@ -3,10 +3,12 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView,
   ActivityIndicator, Image, Alert, Switch, Modal, TextInput, FlatList,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
+import * as FileSystem from 'expo-file-system';
 import { isRunningInExpoGo } from 'expo';
 import { useNavigation } from '@react-navigation/native';
 import { useAction, useMutation } from 'convex/react';
@@ -60,9 +62,10 @@ interface RowProps {
   onSwitchChange?:  (v: boolean) => void;
   isDanger?:        boolean;
   isLast?:          boolean;
+  children?:        React.ReactNode;
 }
 
-function Row({ icon, iconColor, label, value, onPress, isSwitch, switchValue, onSwitchChange, isDanger, isLast }: RowProps) {
+function Row({ icon, iconColor, label, value, onPress, isSwitch, switchValue, onSwitchChange, isDanger, isLast, children }: RowProps) {
   const { colors, fonts } = useTheme();
   const ic = isDanger ? '#E53935' : (iconColor ?? colors.accent);
   return (
@@ -79,6 +82,7 @@ function Row({ icon, iconColor, label, value, onPress, isSwitch, switchValue, on
         {label}
       </Text>
       <View style={s.rowRight}>
+        {children}
         {value !== undefined && (
           <Text style={[s.rowValue, { color: colors.textSecondary, fontSize: fonts.md }]} numberOfLines={1}>{value}</Text>
         )}
@@ -128,6 +132,7 @@ export default function ProfileScreen() {
     field: 'name' | 'bio'; title: string;
   } | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [docModal,  setDocModal]  = useState<{ title: string; text: string } | null>(null);
 
   // Change password modal
   const [pwModal,    setPwModal]    = useState(false);
@@ -144,6 +149,7 @@ export default function ProfileScreen() {
   const updateProfileMut     = useMutation(api.users.updateProfile);
   const updatePrivacyMut     = useMutation(api.users.updatePrivacy);
   const setBubbleColorMut    = useMutation(api.users.setBubbleColor);
+  const setPresenceMut       = useMutation(api.users.setPresence);
   const logoutAction         = useAction(api.auth.logout);
   const uploadAvatarAction   = useAction(api.users.uploadAvatar);
   const changePasswordAction = useAction(api.auth.changePassword);
@@ -275,13 +281,13 @@ export default function ProfileScreen() {
     if (isRunningInExpoGo()) return;
     try {
       if (!val) {
-        await updateProfileMut({ sessionId: sid, fcmToken: '' });
+        await updateProfileMut({ sessionId: sid, expoPushToken: '' });
       } else {
         const { status } = await Notifications.getPermissionsAsync();
         if (status === 'granted') {
           const tokenData = await Notifications.getDevicePushTokenAsync();
           if (tokenData.data) {
-            await updateProfileMut({ sessionId: sid, fcmToken: tokenData.data });
+            await updateProfileMut({ sessionId: sid, expoPushToken: tokenData.data });
           }
         }
       }
@@ -311,6 +317,67 @@ export default function ProfileScreen() {
     }
   }
 
+  const TERMS_TEXT = `Welcome to Connex SA. By using this application, you agree to comply with and be bound by the following terms and conditions of use.
+
+1. Emergency SOS Service
+Connex SA provides a peer-to-peer SOS emergency alerting tool. You explicitly acknowledge and agree that:
+• SOS alerts rely on mobile network connectivity, notification permissions, and your trusted contacts' device availability. Phase 1 does not share live GPS location.
+• Connex SA is not a direct dispatch agency and does not guarantee response times from your emergency contacts.
+• This app is a supplementary aid and NOT a replacement for primary state emergency services (SAPS 10111, Ambulance 10177, or 112).
+
+2. User Registration & Security
+You must register using a valid South African phone number. You are solely responsible for all activities and SOS triggers initiated under your account.
+
+3. Acceptable Use Policy
+You agree not to abuse the emergency alerting system. Initiating false SOS alerts maliciously is strictly prohibited and may result in permanent account termination.
+
+4. Limitation of Liability
+To the maximum extent permitted by South African law, Connex SA and its developers shall not be liable for any direct, indirect, incidental, or consequential damages resulting from the use or inability to use the services.`;
+
+  const PRIVACY_TEXT = `Connex SA is fully committed to protecting your privacy and ensuring compliance with the South African Protection of Personal Information Act (POPIA), Act 4 of 2013.
+
+1. Information Collection
+We collect and process the following personal information:
+• Account Credentials: Your phone number, display name, bio, and province of residence.
+• Area Preference: If you provide an area, it is used to show relevant local alerts. Phase 1 SOS does not collect or share precise GPS coordinates.
+• Media & Messaging: Photos, videos, and chat logs are stored securely on our database to facilitate instant messaging.
+
+2. Data Security & Hosting
+Your personal data is encrypted in transit and at rest. We implement robust physical, technical, and administrative safeguards to prevent unauthorized access or leakage.
+
+3. Third-Party Sharing
+We never sell, rent, or trade your personal information. SOS emergency messages are sent only to contacts who accepted the mutual SOS relationship.
+
+4. Your Rights
+Under POPIA, you have the right to access, rectify, or request the deletion of your personal data at any time. For privacy inquiries, email us at privacy@connexsa.co.za.`;
+
+  async function handleClearCache() {
+    Alert.alert(
+      'Clear cache',
+      'Are you sure you want to clear all cached media files? This will free up storage.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear', style: 'destructive',
+          onPress: async () => {
+            try {
+              const cacheDir = (FileSystem as any).cacheDirectory as string | null;
+              if (cacheDir) {
+                const files = await FileSystem.readDirectoryAsync(cacheDir);
+                for (const file of files) {
+                  await FileSystem.deleteAsync(cacheDir + file, { idempotent: true });
+                }
+              }
+              Alert.alert('Success', 'Media cache cleared successfully.');
+            } catch {
+              Alert.alert('Error', 'Could not clear media cache.');
+            }
+          },
+        },
+      ]
+    );
+  }
+
   function handleSignOut() {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -318,9 +385,9 @@ export default function ProfileScreen() {
         text: 'Sign out', style: 'destructive',
         onPress: async () => {
           setSigningOut(true);
+          try { await setPresenceMut({ sessionId: sid, isOnline: false }); } catch {}
           try { await logoutAction({ sessionId: sid }); } catch {}
           clearAuth();
-          setSigningOut(false);
         },
       },
     ]);
@@ -458,10 +525,7 @@ export default function ProfileScreen() {
           />
           <Row
             icon="trash-outline" label="Clear media cache"
-            onPress={() => Alert.alert('Clear cache', 'Cached media will be deleted.', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Clear', style: 'destructive', onPress: () => {} },
-            ])}
+            onPress={handleClearCache}
             isLast
           />
         </SectionCard>
@@ -471,8 +535,8 @@ export default function ProfileScreen() {
         <SectionCard>
           <Row icon="information-circle-outline" label="App version"    value="1.0.0" />
           <Row icon="help-circle-outline"        label="Help & support" onPress={() => Alert.alert('Help', 'Email us at support@connexsa.co.za')} />
-          <Row icon="document-text-outline"      label="Terms of service" onPress={() => {}} />
-          <Row icon="shield-checkmark-outline"   label="Privacy policy"   onPress={() => {}} isLast />
+          <Row icon="document-text-outline"      label="Terms of service" onPress={() => Linking.openURL('https://connexsa.co.za/terms.html#terms-content').catch(() => {})} />
+          <Row icon="shield-checkmark-outline"   label="Privacy policy"   onPress={() => Linking.openURL('https://connexsa.co.za/privacy.html#privacy-content').catch(() => {})} isLast />
         </SectionCard>
 
         {/* ── Sign out / Delete ───────────────────────────────────────── */}
@@ -640,17 +704,29 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Terms of Service & Privacy Policy Modal ────────────────────── */}
+      <Modal visible={!!docModal} transparent animationType="slide" onRequestClose={() => setDocModal(null)}>
+        <View style={s.sheetOverlay}>
+          <View style={[s.sheet, { backgroundColor: colors.surface, height: '75%' }]}>
+            <Text style={[s.sheetTitle, { color: colors.text, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, paddingBottom: 14 }]}>
+              {docModal?.title}
+            </Text>
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <Text style={{ color: colors.text, fontSize: 15, lineHeight: 22 }}>
+                {docModal?.text}
+              </Text>
+            </ScrollView>
+            <TouchableOpacity style={[s.sheetCancel, { borderTopColor: colors.border }]} onPress={() => setDocModal(null)}>
+              <Text style={[s.sheetCancelText, { color: colors.accent, fontWeight: '700' }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// ─── Workaround: Row with children ────────────────────────────────────────────
-// TypeScript needs this to allow children on Row
-declare module 'react' {
-  interface FunctionComponent<P = object> {
-    (props: P & { children?: React.ReactNode }, context?: any): React.ReactElement | null;
-  }
-}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({

@@ -18,10 +18,10 @@ export const authService = {
     return convex.action(api.auth.logout, { sessionId: sessionId as any });
   },
 
-  async saveFcmToken(sessionId: string, fcmToken: string) {
+  async saveExpoPushToken(sessionId: string, expoPushToken: string) {
     return convex.mutation(api.users.updateProfile, {
       sessionId: sessionId as any,
-      fcmToken,
+      expoPushToken,
     });
   },
 };

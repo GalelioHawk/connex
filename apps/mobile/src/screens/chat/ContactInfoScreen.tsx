@@ -177,7 +177,7 @@ export default function ContactInfoScreen() {
             <Ionicons name="lock-closed-outline" size={22} color={colors.textSecondary} style={s.rowIcon} />
             <View style={{ flex: 1 }}>
               <Text style={[s.rowLabel, { color: colors.text }]}>Encryption</Text>
-              <Text style={[s.rowSub, { color: colors.textSecondary }]}>Messages and calls are end-to-end encrypted. Tap to verify.</Text>
+              <Text style={[s.rowSub, { color: colors.textSecondary }]}>Data is encrypted in transit and at rest. End-to-end encryption is not yet available.</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>

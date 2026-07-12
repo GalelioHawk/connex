@@ -2,17 +2,26 @@ import React, { useState } from 'react';
 import IncomingCallBanner from '../components/chat/IncomingCallBanner';
 import {
   View, TouchableOpacity, StyleSheet,
-  Text, ScrollView,
+  Text, ScrollView, Image, Dimensions,
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { useQuery } from 'convex/react';
+import { api } from '../../convex/_generated/api';
+import type { Id } from '../../convex/_generated/dataModel';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
+import { useChatTabStore, type ChatTab } from '../store/chatTabStore';
 import { useTheme } from '../hooks/useTheme';
 import { navigationRef } from './navigationRef';
+import UpdatesIcon from '../components/shared/UpdatesIcon';
+import CommunitiesIcon from '../components/shared/CommunitiesIcon';
 import type { ThemeColors } from '../theme/colors';
+import SessionErrorBoundary from '../components/shared/SessionErrorBoundary';
 
 // ─── Auth stack ───────────────────────────────────────────────────────────────
 export type AuthStackParams = { Onboarding: undefined; Register: undefined; Login: undefined };
@@ -32,6 +41,8 @@ export type ChatStackParams = {
   ChatList:      undefined;
   ChatRoom:      { conversationId: string; title: string; avatarUrl?: string | null; userId?: string | null };
   ContactInfo:   { title: string; avatarUrl?: string | null; userId?: string | null };
+  GroupInfo:     { conversationId: string; title: string };
+  MessageRequests: undefined;
   NewGroup:      undefined;
   SOSContacts:   undefined;
   StatusViewer:  { userId: string; name: string; avatarUrl: string | null };
@@ -53,6 +64,8 @@ function ChatNavigator() {
       <ChatStack.Screen name="ChatList"      component={require('../screens/chat/ChatListScreen').default} />
       <ChatStack.Screen name="ChatRoom"      component={require('../screens/chat/ChatRoomScreen').default} />
       <ChatStack.Screen name="ContactInfo"   component={require('../screens/chat/ContactInfoScreen').default} />
+      <ChatStack.Screen name="GroupInfo"     component={require('../screens/chat/GroupInfoScreen').default} />
+      <ChatStack.Screen name="MessageRequests" component={require('../screens/chat/MessageRequestsScreen').default} />
       <ChatStack.Screen name="NewGroup"      component={require('../screens/chat/NewGroupScreen').default} />
       <ChatStack.Screen name="SOSContacts"   component={require('../screens/sos/SOSContactsScreen').default} />
       <ChatStack.Screen
@@ -69,6 +82,19 @@ function ChatNavigator() {
     </ChatStack.Navigator>
   );
 }
+// ─── Edu stack ────────────────────────────────────────────────────────────────
+export type EduStackParams = {
+  EduHome: undefined;
+};
+const EduStack = createNativeStackNavigator<EduStackParams>();
+function EduNavigator() {
+  return (
+    <EduStack.Navigator screenOptions={{ headerShown: false }}>
+      <EduStack.Screen name="EduHome" component={require('../screens/edu/EduHomeScreen').default} />
+    </EduStack.Navigator>
+  );
+}
+
 // ─── Tab navigator (no visible tab bar) ──────────────────────────────────────
 export type MainTabParams = {
   Chat: undefined; Feed: undefined; Edu: undefined; Profile: undefined;
@@ -79,25 +105,14 @@ function MainNavigator() {
     <Tab.Navigator screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}>
       <Tab.Screen name="Chat"    component={ChatNavigator} />
       <Tab.Screen name="Feed"    component={require('../screens/feed/FeedHomeScreen').default} />
-      <Tab.Screen name="Edu"     component={require('../screens/edu/EduHomeScreen').default} />
+      <Tab.Screen name="Edu"     component={EduNavigator} />
       <Tab.Screen name="Profile" component={require('../screens/profile/ProfileScreen').default} />
     </Tab.Navigator>
   );
 }
 
 // ─── Bottom tab bar ───────────────────────────────────────────────────────────
-const HIDE_ON = ['ChatRoom', 'NewGroup', 'SOSContacts', 'ContactInfo', 'StatusViewer', 'StatusCreator', 'Call'];
-
-const TABS = [
-  { name: 'Chat',      active: 'chatbubbles', inactive: 'chatbubbles-outline', comingSoon: false, isTheme: false, isSOS: false },
-  { name: 'Feed',      active: 'newspaper',   inactive: 'newspaper-outline',   comingSoon: false, isTheme: false, isSOS: false },
-  { name: 'Edu',       active: 'book',        inactive: 'book-outline',        comingSoon: false, isTheme: false, isSOS: false },
-  { name: 'Profile',   active: 'person',      inactive: 'person-outline',      comingSoon: false, isTheme: false, isSOS: false },
-  { name: 'SOS',       active: 'shield',      inactive: 'shield-outline',      comingSoon: false, isTheme: false, isSOS: true  },
-  { name: 'Pay',       active: 'wallet',      inactive: 'wallet-outline',      comingSoon: true,  isTheme: false, isSOS: false },
-  { name: 'Logistics', active: 'car',         inactive: 'car-outline',         comingSoon: true,  isTheme: false, isSOS: false },
-  { name: 'Theme',     active: 'moon',        inactive: 'moon-outline',        comingSoon: false, isTheme: true,  isSOS: false },
-];
+const HIDE_ON = ['ChatRoom', 'NewGroup', 'SOSContacts', 'ContactInfo', 'GroupInfo', 'MessageRequests', 'StatusViewer', 'StatusCreator', 'Call'];
 
 interface FloatingMenuProps {
   colors: ThemeColors;
@@ -107,64 +122,186 @@ interface FloatingMenuProps {
 }
 
 function FloatingMenu({ colors, isDark, toggleTheme, currentRoute }: FloatingMenuProps) {
-  const [activeTab, setActiveTab] = useState('Chat');
+  const insets     = useSafeAreaInsets();
+  const sessionId  = useAuthStore((state) => state.sessionId);
+  const user       = useAuthStore((state) => state.user);
+  const chatTab    = useChatTabStore((state) => state.tab);
+  const setChatTab = useChatTabStore((state) => state.setTab);
+
+  // Shared subscriptions with ChatListScreen (same queries — no extra load)
+  const convos = useQuery(
+    api.chat.listConversations,
+    sessionId ? { sessionId: sessionId as Id<'sessions'> } : 'skip',
+  );
+  const statusData = useQuery(
+    api.status.list,
+    sessionId ? { sessionId: sessionId as Id<'sessions'> } : 'skip',
+  );
+  const totalUnread = (convos ?? []).reduce(
+    (sum, convo) => sum + (convo?.unread_count ?? 0),
+    0,
+  );
+  const hasUnseenStatus = statusData?.contacts?.some((c) => c.hasUnseen) ?? false;
 
   const visible = !HIDE_ON.includes(currentRoute);
   if (!visible) return null;
 
-  const go = (tabName: string) => {
-    navigationRef.current?.navigate(tabName as never);
-    setActiveTab(tabName);
+  // The chat screen ('' = initial route — the app opens on the chat list)
+  const onChatScreen = currentRoute === 'ChatList' || currentRoute === '';
+
+  const goTab = (name: string) => navigationRef.current?.navigate(name as never);
+  const goChatSection = (section: ChatTab) => {
+    goTab('Chat');
+    setChatTab(section);
   };
+
+  const bubbleBg  = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.07)';
+  const barBottom = Math.max(insets.bottom - 16, 10);
+  const dotBorder = isDark ? '#1C1C1E' : colors.tabBar;
+
+  // The first 5 items exactly fill the visible pill; the rest follow on swipe
+  const itemWidth = (Dimensions.get('window').width - 24 - 12) / 5;
+  const inactive  = isDark ? '#C9C9CE' : '#5A5A5E';
+  const activeCol = isDark ? '#FFFFFF' : colors.text;
+
+  interface BarItem {
+    key:        string;
+    label:      string;
+    icon:       (color: string) => React.ReactNode;
+    onPress:    () => void;
+    active?:    boolean;
+    tint?:      string;   // fixed colour (SOS red)
+    hasBadge?:  boolean;  // unread count
+    youDot?:    boolean;  // green presence dot on avatar
+    soon?:      boolean;  // coming-soon, disabled
+  }
+
+  const onFeed    = currentRoute === 'Feed';
+  const onEdu     = currentRoute === 'EduHome';
+  const onProfile = currentRoute === 'Profile';
+
+  // Founder-specified order: Chats, Calls, SOS, Updates, Feed, Edu, Communities… You last
+  const items: BarItem[] = [
+    {
+      key: 'Chats', label: 'Chats', active: onChatScreen && chatTab === 'Texts', hasBadge: true,
+      icon: (color) => <Ionicons name="chatbubbles" size={24} color={color} />,
+      onPress: () => goChatSection('Texts'),
+    },
+    {
+      key: 'Calls', label: 'Calls', active: onChatScreen && chatTab === 'Calls',
+      icon: (color) => <Ionicons name="call" size={24} color={color} />,
+      onPress: () => goChatSection('Calls'),
+    },
+    {
+      key: 'SOS', label: 'SOS', tint: '#E53E3E',
+      icon: () => <Ionicons name="shield" size={23} color="#E53E3E" />,
+      onPress: () => (navigationRef.current as any)?.navigate('Chat', { screen: 'SOSContacts' }),
+    },
+    {
+      key: 'Updates', label: 'Updates', active: onChatScreen && chatTab === 'Status',
+      icon: (color) => <UpdatesIcon size={26} color={color} showDot={hasUnseenStatus} />,
+      onPress: () => goChatSection('Status'),
+    },
+    {
+      key: 'Feed', label: 'Feed', active: onFeed,
+      icon: (color) => (
+        <Ionicons name={onFeed ? 'newspaper' : 'newspaper-outline'} size={23} color={color} />
+      ),
+      onPress: () => goTab('Feed'),
+    },
+    {
+      key: 'Edu', label: 'Edu', active: onEdu,
+      icon: (color) => (
+        <Ionicons name={onEdu ? 'book' : 'book-outline'} size={23} color={color} />
+      ),
+      onPress: () => goTab('Edu'),
+    },
+    {
+      key: 'Communities', label: 'Communities', active: onChatScreen && chatTab === 'Communities',
+      icon: (color) => <CommunitiesIcon size={27} color={color} />,
+      onPress: () => goChatSection('Communities'),
+    },
+    {
+      key: 'Pay', label: 'Pay', soon: true,
+      icon: (color) => <Ionicons name="wallet-outline" size={23} color={color} />,
+      onPress: () => undefined,
+    },
+    {
+      key: 'Logistics', label: 'Logistics', soon: true,
+      icon: (color) => <Ionicons name="car-outline" size={23} color={color} />,
+      onPress: () => undefined,
+    },
+    {
+      key: 'Theme', label: isDark ? 'Dark' : 'Light',
+      icon: (color) => (
+        <Ionicons name={isDark ? 'moon' : 'sunny-outline'} size={23} color={color} />
+      ),
+      onPress: toggleTheme,
+    },
+    {
+      key: 'You', label: 'You', youDot: true, active: onProfile,
+      icon: (color) =>
+        user?.avatar_url ? (
+          <Image source={{ uri: user.avatar_url }} style={s.avatarIcon} />
+        ) : (
+          <Ionicons name="person-circle" size={27} color={color} />
+        ),
+      onPress: () => goTab('Profile'),
+    },
+  ];
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <View style={[s.bar, { backgroundColor: colors.tabBar, borderTopColor: colors.border }]}>
+      <View style={[s.bar, { bottom: barBottom }]}>
+        {/* Frosted-glass background like WhatsApp's bar */}
+        <BlurView
+          intensity={70}
+          tint={isDark ? 'dark' : 'light'}
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: isDark ? 'rgba(28,28,30,0.55)' : 'rgba(255,255,255,0.55)' },
+          ]}
+        />
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={s.row}
           bounces={false}
         >
-          {TABS.map((tab) => {
-            const focused    = !tab.isTheme && !tab.isSOS && !tab.comingSoon && activeTab === tab.name;
-            const iconName   = tab.isTheme
-              ? (isDark ? 'moon' : 'sunny-outline')
-              : (focused ? tab.active : tab.inactive);
-            const iconColor  = tab.comingSoon
+          {items.map((item) => {
+            const color = item.soon
               ? colors.textMuted
-              : tab.isSOS
-                ? '#E53E3E'
-                : focused
-                  ? colors.accent
-                  : colors.textMuted;
-            const labelColor = iconColor;
-
+              : item.tint ?? (item.active ? activeCol : inactive);
             return (
               <TouchableOpacity
-                key={tab.name}
-                style={[s.item, tab.comingSoon && s.itemDim]}
-                onPress={() => {
-                  if (tab.comingSoon) return;
-                  if (tab.isTheme) { toggleTheme(); return; }
-                  if (tab.isSOS) {
-                    (navigationRef.current as any)?.navigate('Chat', { screen: 'SOSContacts' });
-                    return;
-                  }
-                  go(tab.name);
-                }}
-                activeOpacity={tab.comingSoon ? 1 : 0.7}
+                key={item.key}
+                style={[s.waItem, { width: itemWidth }, item.soon && s.itemDim]}
+                onPress={item.soon ? undefined : item.onPress}
+                activeOpacity={item.soon ? 1 : 0.7}
               >
-                <View style={s.iconWrap}>
-                  <Ionicons name={iconName as any} size={22} color={iconColor} />
-                  {tab.comingSoon && (
+                <View style={[s.iconBubble, item.active && { backgroundColor: bubbleBg }]}>
+                  {item.icon(color)}
+                  {item.hasBadge && totalUnread > 0 && (
+                    <View style={s.countBadge}>
+                      <Text style={s.countBadgeText}>
+                        {totalUnread > 99 ? '99+' : totalUnread}
+                      </Text>
+                    </View>
+                  )}
+                  {item.youDot && (
+                    <View style={[s.onlineDot, { borderColor: dotBorder }]} />
+                  )}
+                  {item.soon && (
                     <View style={s.badge}>
                       <Text style={s.badgeText}>Soon</Text>
                     </View>
                   )}
                 </View>
-                <Text style={[s.label, { color: labelColor }, focused && s.labelActive]}>
-                  {tab.isTheme ? (isDark ? 'Dark' : 'Light') : tab.name}
+                <Text
+                  style={[s.waLabel, { color }, item.active && s.labelActive]}
+                  numberOfLines={1}
+                >
+                  {item.label}
                 </Text>
               </TouchableOpacity>
             );
@@ -176,41 +313,86 @@ function FloatingMenu({ colors, isDark, toggleTheme, currentRoute }: FloatingMen
 }
 
 const s = StyleSheet.create({
+  // WhatsApp-style floating pill bar
   bar: {
-    position:    'absolute',
-    bottom:      0,
-    left:        0,
-    right:       0,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    position:     'absolute',
+    left:         12,
+    right:        12,
+    borderRadius: 30,
     shadowColor:    '#000',
-    shadowOffset:   { width: 0, height: -2 },
-    shadowOpacity:  0.08,
-    shadowRadius:   8,
+    shadowOffset:   { width: 0, height: 6 },
+    shadowOpacity:  0.25,
+    shadowRadius:   14,
     elevation:      16,
+    overflow:       'hidden',
   },
   row: {
     flexDirection:     'row',
     alignItems:        'center',
-    paddingHorizontal: 8,
-    paddingBottom:     20,
-    paddingTop:        10,
-    gap:               4,
+    paddingHorizontal: 10,
+    paddingVertical:   8,
+    gap:               2,
   },
   item: {
     alignItems:  'center',
-    paddingHorizontal: 16,
-    gap: 3,
+    paddingHorizontal: 10,
+    gap: 2,
   },
   itemDim: {
     opacity: 0.5,
   },
-  iconWrap: {
-    position: 'relative',
+  iconBubble: {
+    minWidth:       62,
+    height:         36,
+    borderRadius:   18,
+    alignItems:     'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  avatarIcon: {
+    width:        27,
+    height:       27,
+    borderRadius: 13.5,
+  },
+  waItem: {
+    alignItems: 'center',
+    gap: 3,
+  },
+  waLabel: {
+    fontSize:   12,
+    fontWeight: '500',
+  },
+  countBadge: {
+    position:        'absolute',
+    top:             -5,
+    right:           6,
+    minWidth:        20,
+    height:          20,
+    borderRadius:    10,
+    backgroundColor: '#25D366',
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingHorizontal: 5,
+  },
+  countBadgeText: {
+    color:      '#FFFFFF',
+    fontSize:   12,
+    fontWeight: '700',
+  },
+  onlineDot: {
+    position:        'absolute',
+    top:             -2,
+    right:           12,
+    width:           11,
+    height:          11,
+    borderRadius:    5.5,
+    backgroundColor: '#25D366',
+    borderWidth:     2,
   },
   badge: {
     position:        'absolute',
-    top:             -4,
-    right:           -14,
+    top:             -6,
+    right:           -6,
     backgroundColor: '#C9973F',
     borderRadius:    4,
     paddingHorizontal: 4,
@@ -235,6 +417,7 @@ const s = StyleSheet.create({
 // ─── Root navigator ───────────────────────────────────────────────────────────
 export default function RootNavigator() {
   const isAuthenticated    = useAuthStore((s) => s.isAuthenticated && !!s.sessionId);
+  const sessionId          = useAuthStore((s) => s.sessionId);
   const { colors, isDark } = useTheme();
   const toggleTheme        = useThemeStore((s) => s.toggleTheme);
   const [currentRoute, setCurrentRoute] = useState('');
@@ -248,7 +431,11 @@ export default function RootNavigator() {
           setCurrentRoute(route);
         }}
       >
-        {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
+        {isAuthenticated ? (
+          <SessionErrorBoundary resetKey={sessionId}>
+            <MainNavigator />
+          </SessionErrorBoundary>
+        ) : <AuthNavigator />}
       </NavigationContainer>
 
       {isAuthenticated && (

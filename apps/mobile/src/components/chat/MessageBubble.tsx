@@ -7,8 +7,8 @@ import dayjs from 'dayjs';
 import { useTheme } from '../../hooks/useTheme';
 import { useSettingsStore } from '../../store/settingsStore';
 
-const IMG_W = Dimensions.get('window').width * 0.65;
-const IMG_H = IMG_W * 0.75;
+const IMG_W = Dimensions.get('window').width * 0.73;
+const IMG_H = IMG_W * 0.76;
 
 interface Props {
   content:            string | null;
@@ -40,19 +40,22 @@ export default function MessageBubble({
   const [downloaded, setDownloaded] = useState(() => mediaAutoDownload !== 'never');
   const [viewerOpen, setViewerOpen] = useState(false);
 
-  function StatusTicks() {
+  function StatusTicks({ isOverMedia = false }: { isOverMedia?: boolean }) {
     if (!isMine || !status || isDeleted) return null;
-    if (status === 'sent')      return <Ionicons name="checkmark"      size={16} color={colors.tickDefault} />;
-    if (status === 'delivered') return <Ionicons name="checkmark-done" size={16} color={colors.tickDefault} />;
-    if (status === 'read')      return <Ionicons name="checkmark-done" size={16} color={colors.tickRead} />;
+    const defaultColor = isOverMedia ? 'rgba(255,255,255,0.8)' : colors.tickDefault;
+    const readColor = isOverMedia ? '#53bdeb' : colors.tickRead;
+    if (status === 'sent')      return <Ionicons name="checkmark"      size={16} color={defaultColor} />;
+    if (status === 'delivered') return <Ionicons name="checkmark-done" size={16} color={defaultColor} />;
+    if (status === 'read')      return <Ionicons name="checkmark-done" size={16} color={readColor} />;
     return null;
   }
 
   function renderMedia() {
     if (!isMedia) return null;
 
+    let mediaContent;
     if (!downloaded) {
-      return (
+      mediaContent = (
         <TouchableOpacity
           style={[s.mediaPlaceholder, { width: IMG_W, height: IMG_H }]}
           onPress={() => setDownloaded(true)}
@@ -64,10 +67,8 @@ export default function MessageBubble({
           </Text>
         </TouchableOpacity>
       );
-    }
-
-    return (
-      <>
+    } else {
+      mediaContent = (
         <TouchableOpacity activeOpacity={0.9} onPress={() => setViewerOpen(true)}>
           <Image
             source={{ uri: mediaUrl! }}
@@ -80,6 +81,20 @@ export default function MessageBubble({
             </View>
           )}
         </TouchableOpacity>
+      );
+    }
+
+    return (
+      <View style={{ position: 'relative' }}>
+        {mediaContent}
+
+        {/* Render overlay metadata here if no caption text */}
+        {!content && (
+          <View style={s.mediaMeta}>
+            <Text style={s.mediaTime}>{dayjs(createdAt).format('HH:mm')}</Text>
+            <StatusTicks isOverMedia />
+          </View>
+        )}
 
         <Modal
           visible={viewerOpen}
@@ -99,7 +114,20 @@ export default function MessageBubble({
             </TouchableOpacity>
           </View>
         </Modal>
-      </>
+      </View>
+    );
+  }
+
+  if (msgType === 'system') {
+    return (
+      <View style={s.systemWrap}>
+        <View style={s.systemBubble}>
+          <Ionicons name="alert-circle" size={16} color="#FF4D4D" style={{ marginRight: 6 }} />
+          <Text style={[s.systemText, { color: '#FF4D4D', fontSize: fonts.sm, fontWeight: '700', lineHeight: Math.round(fonts.sm * 1.45) }]}>
+            {content}
+          </Text>
+        </View>
+      </View>
     );
   }
 
@@ -119,6 +147,7 @@ export default function MessageBubble({
         isMine ? s.bubbleMine : s.bubbleTheirs,
         { backgroundColor: bubbleColor },
         isMedia && s.mediaBubble,
+        isMedia && !content && { paddingBottom: 6 },
       ]}>
         {isDeleted ? (
           <View style={s.deletedRow}>
@@ -134,7 +163,7 @@ export default function MessageBubble({
               <Text style={[s.text, {
                 color: isMine ? colors.bubbleTextMine : colors.bubbleTextTheirs,
                 fontSize: fonts.lg,
-                lineHeight: fonts.lg * 1.45,
+                lineHeight: Math.round(fonts.lg * 1.45),
                 marginTop: 4,
                 paddingHorizontal: 4,
               }]}>
@@ -146,18 +175,21 @@ export default function MessageBubble({
           <Text style={[s.text, {
             color: isMine ? colors.bubbleTextMine : colors.bubbleTextTheirs,
             fontSize: fonts.lg,
-            lineHeight: fonts.lg * 1.45,
+            lineHeight: Math.round(fonts.lg * 1.45),
           }]}>
             {content ?? ''}
           </Text>
         )}
 
-        <View style={[s.meta, isMedia && { paddingHorizontal: 4 }]}>
-          <Text style={[s.time, { color: isMine ? colors.tickDefault : colors.textSecondary }]}>
-            {dayjs(createdAt).format('HH:mm')}
-          </Text>
-          <StatusTicks />
-        </View>
+
+        {(!isMedia || !!content) && (
+          <View style={[s.meta, isMedia && { paddingHorizontal: 4 }]}>
+            <Text style={[s.time, { color: isMine ? colors.tickDefault : colors.textSecondary }]}>
+              {dayjs(createdAt).format('HH:mm')}
+            </Text>
+            <StatusTicks />
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -207,5 +239,44 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  mediaMeta: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  mediaTime: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 10.5,
+    fontWeight: '500',
+  },
+  systemWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 10,
+    width: '100%',
+    paddingHorizontal: 16,
+  },
+  systemBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 77, 77, 0.12)',
+    borderColor: 'rgba(255, 77, 77, 0.25)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    maxWidth: '85%',
+  },
+  systemText: {
+    flex: 1,
+    textAlign: 'center',
   },
 });

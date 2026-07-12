@@ -105,7 +105,7 @@ async function registerDevice(
       projectId: '154ace6a-f3c3-4098-b8aa-f49fbed6283d',
     });
     if (tokenData.data && sessionId) {
-      await authService.saveFcmToken(sessionId, tokenData.data);
+      await authService.saveExpoPushToken(sessionId, tokenData.data);
     }
   } catch { /* non-fatal */ }
 }

@@ -1,56 +1,53 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar,
   Modal, FlatList, ActivityIndicator, RefreshControl, Image,
+  TextInput, Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Path } from 'react-native-svg';
-import { useQuery } from 'convex/react';
+import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { useAuthStore } from '../../store/authStore';
+import { useChatTabStore, type ChatTab } from '../../store/chatTabStore';
 import { useTheme } from '../../hooks/useTheme';
 import NewChatModal from '../../components/chat/NewChatModal';
 import CameraScreen from './CameraScreen';
 import ConvoListItem from '../../components/chat/ConvoListItem';
-import StatusIcon from '../../components/shared/StatusIcon';
+import UpdatesIcon from '../../components/shared/UpdatesIcon';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import type { Id } from '../../../convex/_generated/dataModel';
 
 dayjs.extend(relativeTime);
 
-function CommunitiesIcon({ color }: { color: string }) {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Circle cx="5"  cy="8"  r="2.8" stroke={color} strokeWidth={1.8} />
-      <Path d="M1 19.5c0-2 1.8-3.5 4-3.5" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
-      <Circle cx="19" cy="8"  r="2.8" stroke={color} strokeWidth={1.8} />
-      <Path d="M23 19.5c0-2-1.8-3.5-4-3.5" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
-      <Circle cx="12" cy="7"  r="3.2" stroke={color} strokeWidth={1.8} />
-      <Path d="M6 21c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-}
+const WA_GREEN = '#25D366';
 
-type Tab = 'Texts' | 'Status' | 'Calls' | 'Communities';
-const TABS: Tab[] = ['Texts', 'Status', 'Calls', 'Communities'];
-const TAB_ICONS: Record<Exclude<Tab, 'Status' | 'Communities'>, { active: string; inactive: string }> = {
-  Texts: { active: 'chatbubbles', inactive: 'chatbubbles-outline' },
-  Calls: { active: 'call',        inactive: 'call-outline' },
+const TAB_TITLES: Record<ChatTab, string> = {
+  Texts:       'Chats',
+  Status:      'Updates',
+  Calls:       'Calls',
+  Communities: 'Communities',
 };
 
 export default function ChatListScreen() {
   const navigation  = useNavigation<any>();
   const sessionId   = useAuthStore((s) => s.sessionId)!;
   const currentUser = useAuthStore((s) => s.user)!;
-  const { colors }  = useTheme();
+  const { colors, isDark } = useTheme();
 
-  const [activeTab,   setActiveTab]   = useState<Tab>('Texts');
+  // Section driven by the WhatsApp-style bottom bar
+  const activeTab    = useChatTabStore((s) => s.tab);
+  const setActiveTab = useChatTabStore((s) => s.setTab);
+
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [cameraOpen,  setCameraOpen]  = useState(false);
   const [refreshing,  setRefreshing]  = useState(false);
+  const [query,       setQuery]       = useState('');
+
+  // WhatsApp dark mode is true black
+  const bg = isDark ? '#000000' : colors.background;
 
   // ─── Reactive conversations — auto-updates when messages arrive ──────────
   const convos = useQuery(
@@ -64,7 +61,35 @@ export default function ChatListScreen() {
     sessionId ? { sessionId: sessionId as Id<'sessions'> } : 'skip',
   );
 
+  // ─── Message requests ────────────────────────────────────────────────────
+  const messageRequests = useQuery(
+    api.chat.listMessageRequests,
+    sessionId ? { sessionId: sessionId as Id<'sessions'> } : 'skip',
+  );
+
+  // ─── Call history ────────────────────────────────────────────────────────
+  const callHistory = useQuery(
+    api.calls.listCallHistory,
+    sessionId ? { sessionId: sessionId as Id<'sessions'> } : 'skip',
+  );
+
+  const markAllDeliveredMutation = useMutation(api.chat.markAllDelivered);
+
   const loading = convos === undefined;
+
+  // Automatically mark all incoming messages as delivered when conversations or requests update
+  useEffect(() => {
+    if (!sessionId) return;
+
+    // Check if there are any incoming messages from others still in 'sent' state
+    const hasSentIncoming =
+      (convos || []).some(c => c != null && c.last_message && c.last_message.sender_id !== currentUser.id && (c.last_message as any).status === 'sent') ||
+      (messageRequests || []).some(r => r != null && r.last_message != null);
+
+    if (hasSentIncoming) {
+      markAllDeliveredMutation({ sessionId: sessionId as Id<'sessions'> }).catch(() => {});
+    }
+  }, [convos, messageRequests, sessionId]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -87,6 +112,7 @@ export default function ChatListScreen() {
       <FlatList
         data={contacts}
         keyExtractor={(c) => c.userId}
+        contentContainerStyle={s.listContent}
         ListHeaderComponent={() => (
           <View>
             {/* ── My Status ── */}
@@ -189,28 +215,15 @@ export default function ChatListScreen() {
           </TouchableOpacity>
         )}
         ListEmptyComponent={() => (
-          <View style={[s.empty, { justifyContent: 'flex-start', paddingTop: 100 }]}>
-            <View style={[s.emptyIconWrap, { backgroundColor: colors.surface }]}>
-              <StatusIcon color={colors.textMuted} size={44} />
-            </View>
-            <Text style={[s.emptyTitle, { color: colors.text }]}>No updates yet</Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>
-              Status updates from your contacts will appear here
+          <View style={[s.empty, { justifyContent: 'flex-start', paddingTop: 160 }]}>
+            <UpdatesIcon color={colors.textMuted} size={28} />
+            <Text style={[s.emptyTitle, { color: colors.textMuted, fontSize: 13, fontWeight: '600', marginTop: 6 }]}>
+              No updates yet
             </Text>
           </View>
         )}
       />
     );
-  }
-
-  const hasUnseenStatuses = statusData?.contacts.some((c) => c.hasUnseen) ?? false;
-
-  function renderTabIcon(tab: Tab, active: boolean) {
-    const color = active ? colors.text : colors.textMuted;
-    if (tab === 'Communities') return <CommunitiesIcon color={color} />;
-    if (tab === 'Status') return <StatusIcon color={color} showDot={hasUnseenStatuses} />;
-    const icon = TAB_ICONS[tab as keyof typeof TAB_ICONS][active ? 'active' : 'inactive'];
-    return <Ionicons name={icon as any} size={24} color={color} />;
   }
 
   function renderTextsTab() {
@@ -221,25 +234,45 @@ export default function ChatListScreen() {
         </View>
       );
     }
-    if (!convos || convos.length === 0) {
-      return (
-        <View style={s.empty}>
-          <View style={[s.emptyIconWrap, { backgroundColor: colors.surface }]}>
-            <Ionicons name="chatbubble-ellipses-outline" size={44} color={colors.textMuted} />
-          </View>
-          <Text style={[s.emptyTitle, { color: colors.text }]}>No messages yet</Text>
-          <Text style={[s.emptyText, { color: colors.textSecondary }]}>Start a conversation by tapping the compose button</Text>
-        </View>
-      );
-    }
     const statusMap = new Map(
       (statusData?.contacts ?? []).map((c) => [c.userId, c]),
     );
 
+    const hasRequests = messageRequests && messageRequests.length > 0;
+
+    const needle = query.trim().toLowerCase();
+    const visibleConvos = (convos ?? [])
+      .filter((c): c is NonNullable<typeof c> => c != null)
+      .filter((c) => {
+        if (!needle) return true;
+        const name = c.type === 'group' ? (c.name ?? 'Group') : (c.other_user?.name ?? '');
+        const last = c.last_message?.content ?? '';
+        return name.toLowerCase().includes(needle) || last.toLowerCase().includes(needle);
+      });
+
     return (
       <FlatList
-        data={convos}
+        data={visibleConvos}
         keyExtractor={(c) => c.id}
+        contentContainerStyle={s.listContent}
+        ListHeaderComponent={hasRequests && !needle ? () => (
+          // WhatsApp "Archived"-style row → Connex message requests
+          <TouchableOpacity
+            style={s.requestRow}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('MessageRequests')}
+          >
+            <View style={s.requestIconWrap}>
+              <Ionicons name="archive-outline" size={22} color={colors.textSecondary} />
+            </View>
+            <View style={[s.requestBody, { borderBottomColor: colors.separator }]}>
+              <Text style={[s.requestText, { color: colors.text }]}>Requests</Text>
+              <Text style={[s.requestCount, { color: colors.textSecondary }]}>
+                {messageRequests.length}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
         renderItem={({ item }) => {
           const otherUserId     = item.type === 'direct' ? (item.other_user?.id ?? null) : null;
           const contactStatus   = otherUserId ? statusMap.get(otherUserId) : undefined;
@@ -263,6 +296,7 @@ export default function ChatListScreen() {
               lastMessageIsMine={item.last_message?.sender_id === currentUser.id}
               unreadCount={item.unread_count}
               isGroup={item.type === 'group'}
+              lastMessageType={item.last_message?.type as any}
               onPress={() => openConversation(item)}
               hasStatus={!!contactStatus}
               hasUnseenStatus={contactStatus?.hasUnseen ?? false}
@@ -274,6 +308,18 @@ export default function ChatListScreen() {
             />
           );
         }}
+        ListEmptyComponent={() => (
+          <View style={[s.empty, { justifyContent: 'flex-start', paddingTop: 160 }]}>
+            <Ionicons
+              name={needle ? 'search-outline' : 'chatbubble-ellipses-outline'}
+              size={28}
+              color={colors.textMuted}
+            />
+            <Text style={[s.emptyTitle, { color: colors.textMuted, fontSize: 13, fontWeight: '600', marginTop: 6 }]}>
+              {needle ? 'No chats found' : 'No messages yet'}
+            </Text>
+          </View>
+        )}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
         }
@@ -281,58 +327,205 @@ export default function ChatListScreen() {
     );
   }
 
-  return (
-    <SafeAreaView style={[s.root, { backgroundColor: colors.background }]} edges={['top']}>
-      <StatusBar barStyle={colors.statusBar} backgroundColor={colors.background} />
+  function formatCallDuration(startedAt: number, endedAt: number | null) {
+    if (!endedAt || endedAt <= startedAt) return null;
+    const totalSeconds = Math.max(1, Math.round((endedAt - startedAt) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  }
 
-      <View style={s.header}>
-        <Text style={[s.headerTitle, { color: colors.text }]}>Chats</Text>
-        <View style={s.headerActions}>
-          <TouchableOpacity style={s.iconBtn} onPress={() => setCameraOpen(true)}>
-            <Ionicons name="camera-outline" size={24} color={colors.headerIcon} />
+  function getCallSummary(item: NonNullable<typeof callHistory>[number]) {
+    if (item.status === 'missed') {
+      return item.isOutgoing ? 'Unanswered call' : 'Missed call';
+    }
+    if (item.status === 'ringing') return item.isOutgoing ? 'Outgoing call ringing' : 'Incoming call ringing';
+    if (item.status === 'active') return 'Ongoing call';
+
+    const duration = formatCallDuration(item.startedAt, item.endedAt);
+    const direction = item.isOutgoing ? 'Outgoing' : 'Incoming';
+    const medium = item.type === 'video' ? 'video call' : 'voice call';
+    return duration ? `${direction} ${medium} · ${duration}` : `${direction} ${medium}`;
+  }
+
+  function openCallConversation(item: NonNullable<typeof callHistory>[number]) {
+    navigation.navigate('ChatRoom', {
+      conversationId: item.conversationId,
+      title: item.otherUserName,
+      avatarUrl: item.otherUserAvatarUrl ?? null,
+      userId: item.otherUserId,
+    });
+  }
+
+  function renderCallsTab() {
+    if (callHistory === undefined) {
+      return (
+        <View style={s.center}>
+          <ActivityIndicator size="large" color={colors.accent} />
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        data={callHistory}
+        keyExtractor={(item) => item.callId}
+        contentContainerStyle={s.listContent}
+        renderItem={({ item }) => {
+          const missed = item.status === 'missed' && !item.isOutgoing;
+          const iconColor = missed ? '#E53E3E' : colors.accent;
+          const timeLabel = dayjs(item.startedAt).isSame(dayjs(), 'day')
+            ? dayjs(item.startedAt).format('HH:mm')
+            : dayjs(item.startedAt).fromNow();
+
+          return (
+            <TouchableOpacity
+              style={[s.callRow, { borderBottomColor: colors.border }]}
+              activeOpacity={0.75}
+              onPress={() => openCallConversation(item)}
+            >
+              <View style={[s.callAvatar, { backgroundColor: colors.avatarBg }]}>
+                {item.otherUserAvatarUrl ? (
+                  <Image source={{ uri: item.otherUserAvatarUrl }} style={s.callAvatarImg} />
+                ) : (
+                  <Text style={s.callAvatarLetter}>
+                    {item.otherUserName.charAt(0).toUpperCase()}
+                  </Text>
+                )}
+              </View>
+
+              <View style={s.callMain}>
+                <Text
+                  style={[s.callName, { color: missed ? '#E53E3E' : colors.text }]}
+                  numberOfLines={1}
+                >
+                  {item.otherUserName}
+                </Text>
+                <View style={s.callMetaRow}>
+                  <Ionicons
+                    name={item.isOutgoing ? 'arrow-up-outline' : 'arrow-down-outline'}
+                    size={13}
+                    color={iconColor}
+                  />
+                  <Text style={[s.callSub, { color: missed ? '#E53E3E' : colors.textSecondary }]} numberOfLines={1}>
+                    {getCallSummary(item)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={s.callRight}>
+                <Text style={[s.callTime, { color: colors.textMuted }]}>{timeLabel}</Text>
+                <Ionicons
+                  name={item.type === 'video' ? 'videocam-outline' : 'call-outline'}
+                  size={21}
+                  color={colors.accent}
+                />
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+        ListEmptyComponent={() => (
+          <View style={[s.empty, { justifyContent: 'flex-start', paddingTop: 160 }]}>
+            <Ionicons name="call-outline" size={28} color={colors.textMuted} />
+            <Text style={[s.emptyTitle, { color: colors.textMuted, fontSize: 13, fontWeight: '600', marginTop: 6 }]}>
+              No recent calls
+            </Text>
+          </View>
+        )}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
+        }
+      />
+    );
+  }
+
+  function openMoreMenu() {
+    Alert.alert('Connex', undefined, [
+      { text: 'New group',    onPress: () => navigation.navigate('NewGroup') },
+      { text: 'SOS contacts', onPress: () => navigation.navigate('SOSContacts') },
+      { text: 'Profile',      onPress: () => navigation.navigate('Profile') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  return (
+    <SafeAreaView style={[s.root, { backgroundColor: bg }]} edges={['top']}>
+      <StatusBar barStyle={colors.statusBar} backgroundColor={bg} />
+
+      {/* Top action row — WhatsApp style: ⋯ left, camera + green ＋ right */}
+      <View style={s.topRow}>
+        <TouchableOpacity
+          style={[s.circleBtn, { backgroundColor: colors.surface }]}
+          onPress={openMoreMenu}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="More options"
+        >
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.headerIcon} />
+        </TouchableOpacity>
+
+        <View style={s.topRowRight}>
+          <TouchableOpacity
+            style={[s.circleBtn, { backgroundColor: colors.surface }]}
+            onPress={() => setCameraOpen(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Open camera"
+          >
+            <Ionicons name="camera-outline" size={21} color={colors.headerIcon} />
           </TouchableOpacity>
-          <TouchableOpacity style={s.iconBtn}>
-            <Ionicons name="search-outline" size={24} color={colors.headerIcon} />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.iconBtn} onPress={() => setNewChatOpen(true)}>
-            <Ionicons name="add-circle-outline" size={26} color={colors.headerIcon} />
+          <TouchableOpacity
+            style={[s.circleBtn, { backgroundColor: WA_GREEN }]}
+            onPress={() => setNewChatOpen(true)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="New chat"
+          >
+            <Ionicons name="add" size={26} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={[s.tabBar, { borderBottomColor: colors.border }]}>
-        {TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={s.tabItem}
-            onPress={() => setActiveTab(tab)}
-            activeOpacity={0.7}
-          >
-            {renderTabIcon(tab, activeTab === tab)}
-            {activeTab === tab && <View style={[s.tabIndicator, { backgroundColor: colors.text }]} />}
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Big title — follows the active section like WhatsApp */}
+      <Text style={[s.bigTitle, { color: colors.text }]}>{TAB_TITLES[activeTab]}</Text>
+
+      {/* Search pill */}
+      {activeTab === 'Texts' && (
+        <View style={[s.searchPill, { backgroundColor: colors.surface }]}>
+          <Ionicons name="search" size={18} color={colors.textMuted} />
+          <TextInput
+            style={[s.searchInput, { color: colors.text }]}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {query.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setQuery('')}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+            >
+              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       <View style={s.content}>
         {activeTab === 'Texts' && renderTextsTab()}
         {activeTab === 'Status' && renderStatusTab()}
-        {activeTab === 'Calls' && (
-          <View style={s.empty}>
-            <View style={[s.emptyIconWrap, { backgroundColor: colors.surface }]}>
-              <Ionicons name="call-outline" size={44} color={colors.textMuted} />
-            </View>
-            <Text style={[s.emptyTitle, { color: colors.text }]}>No recent calls</Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>Your call history will appear here</Text>
-          </View>
-        )}
+        {activeTab === 'Calls' && renderCallsTab()}
         {activeTab === 'Communities' && (
-          <View style={s.empty}>
-            <View style={[s.emptyIconWrap, { backgroundColor: colors.surface }]}>
-              <Ionicons name="people-circle-outline" size={44} color={colors.textMuted} />
-            </View>
-            <Text style={[s.emptyTitle, { color: colors.text }]}>No communities yet</Text>
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>Join or create a community to connect with groups</Text>
+          <View style={[s.empty, { justifyContent: 'flex-start', paddingTop: 160 }]}>
+            <Ionicons name="people-circle-outline" size={28} color={colors.textMuted} />
+            <Text style={[s.emptyTitle, { color: colors.textMuted, fontSize: 13, fontWeight: '600', marginTop: 6 }]}>
+              No communities yet
+            </Text>
           </View>
         )}
       </View>
@@ -382,19 +575,101 @@ const st = StyleSheet.create({
 });
 
 const s = StyleSheet.create({
-  root:          { flex: 1 },
-  header:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 },
-  headerTitle:   { fontSize: 26, fontWeight: '900', letterSpacing: -0.8 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  iconBtn:       { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  tabBar:        { flexDirection: 'row', borderBottomWidth: 1 },
-  tabItem:       { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  tabIndicator:  { position: 'absolute', bottom: 0, height: 2.5, width: '50%', borderRadius: 2 },
-  content:       { flex: 1 },
-  separator:     { height: StyleSheet.hairlineWidth },
-  center:        { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  empty:         { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 40 },
+  root:        { flex: 1 },
+  topRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 8 },
+  topRowRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  circleBtn:   { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  bigTitle:    { fontSize: 33, fontWeight: '800', letterSpacing: -0.5, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
+  searchPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 4,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    minHeight: 42,
+    gap: 8,
+  },
+  searchInput: { flex: 1, fontSize: 16, paddingVertical: 9 },
+  content:     { flex: 1, marginTop: 6 },
+  listContent: { paddingBottom: 130 },
+  separator:   { height: StyleSheet.hairlineWidth },
+  center:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  empty:       { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 40 },
   emptyIconWrap: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  emptyTitle:    { fontSize: 17, fontWeight: '800' },
-  emptyText:     { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyTitle:  { fontSize: 17, fontWeight: '800' },
+  emptyText:   { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  requestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 16,
+  },
+  requestIconWrap: {
+    width: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  requestBody: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingRight: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  requestText:  { fontSize: 16, fontWeight: '600' },
+  requestCount: { fontSize: 14 },
+  callRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  callAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  callAvatarImg: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  },
+  callAvatarLetter: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  callMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  callName: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  callMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 3,
+  },
+  callSub: {
+    flex: 1,
+    fontSize: 13,
+  },
+  callRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  callTime: {
+    fontSize: 12,
+  },
 });

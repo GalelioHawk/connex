@@ -21,57 +21,25 @@ interface Props {
 
 const HOLD_DURATION = 3000;
 
-// ─── SOS row — press and hold ─────────────────────────────────────────────────
+// ─── SOS row — Tap and Go ──────────────────────────────────────────────────────
 function SOSRow({ onSOSTriggered }: { onSOSTriggered: () => void }) {
-  const [holding, setHolding] = useState(false);
-  const progress  = useRef(new Animated.Value(0)).current;
-  const animation = useRef<Animated.CompositeAnimation | null>(null);
-  const timerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function startHold() {
-    setHolding(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    progress.setValue(0);
-    animation.current = Animated.timing(progress, {
-      toValue: 1, duration: HOLD_DURATION, useNativeDriver: false,
-    });
-    animation.current.start();
-    timerRef.current = setTimeout(() => triggerSOS(), HOLD_DURATION);
-  }
-
-  function cancelHold() {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setHolding(false);
-    animation.current?.stop();
-    Animated.timing(progress, { toValue: 0, duration: 200, useNativeDriver: false }).start();
-  }
-
   function triggerSOS() {
-    setHolding(false);
-    animation.current?.stop();
-    Animated.timing(progress, { toValue: 0, duration: 200, useNativeDriver: false }).start();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     onSOSTriggered();
   }
 
-  const fillWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
-
   return (
     <TouchableOpacity
       style={[s.optionItem, s.optionBorder, s.sosRow]}
-      activeOpacity={1}
-      onPressIn={startHold}
-      onPressOut={cancelHold}
+      activeOpacity={0.7}
+      onPress={triggerSOS}
     >
-      <Animated.View style={[s.sosFill, { width: fillWidth }]} />
       <View style={[s.optionIcon, s.optionIconSOS]}>
         <Text style={s.sosIconText}>SOS</Text>
       </View>
       <View style={s.optionText}>
         <Text style={s.optionLabelSOS}>Emergency SOS</Text>
-        <Text style={s.optionSubtitle}>
-          {holding ? 'Keep holding…' : 'Press and hold to alert contacts'}
-        </Text>
+        <Text style={s.optionSubtitle}>Tap to instantly alert contacts</Text>
       </View>
     </TouchableOpacity>
   );
@@ -85,10 +53,10 @@ export default function NewChatModal({ visible, onClose, onConversationCreated }
   const triggerAlertAction = useAction(api.sos.triggerAlert);
 
   const [search, setSearch]         = useState('');
-  const [results, setResults]       = useState<{ id: string; name: string; phone: string }[]>([]);
+  const [results, setResults]       = useState<{ id: string; name: string; phone: string | null; avatar_url?: string | null }[]>([]);
   const [searching, setSearching]   = useState(false);
   const [starting, setStarting]     = useState<string | null>(null);
-  const searchTimer                 = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer                 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   function handleSearchChange(text: string) {
     setSearch(text);
@@ -225,7 +193,7 @@ export default function NewChatModal({ visible, onClose, onConversationCreated }
                   </View>
                   <View style={s.userInfo}>
                     <Text style={s.userName}>{user.name}</Text>
-                    <Text style={s.userPhone}>{user.phone}</Text>
+                    <Text style={s.userPhone}>{user.phone ?? ''}</Text>
                   </View>
                   {starting === user.id
                     ? <ActivityIndicator size="small" color="#00A86B" />

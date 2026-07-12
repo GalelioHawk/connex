@@ -28,7 +28,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>connex</string>
-				<string>com.tlake.connexapp</string>
+				<string>com.connex.app</string>
 			</array>
 		</dict>
 		<dict>

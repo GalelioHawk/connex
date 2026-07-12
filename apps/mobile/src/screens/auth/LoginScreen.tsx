@@ -20,6 +20,7 @@ import type { AuthStackParams } from '../../navigation';
 import ConnexWordmark from '../../components/shared/ConnexWordmark';
 import { authService } from '../../services/auth';
 import { useAuthStore } from '../../store/authStore';
+import type { User } from '../../types';
 
 type Props = NativeStackScreenProps<AuthStackParams, 'Login'>;
 
@@ -60,7 +61,7 @@ export default function LoginScreen({ navigation }: Props) {
     setLoading(true);
     try {
       const res = await authService.login(formatted, password);
-      setAuth(res.user, res.sessionId);
+      setAuth(res.user as User, res.sessionId as string);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
       shake();

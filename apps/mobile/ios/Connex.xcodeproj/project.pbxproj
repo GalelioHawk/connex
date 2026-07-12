@@ -17,7 +17,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		090DAD5A41385655313C7A39 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = Connex/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		090DAD5A41385655313C7A39 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Connex/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		110ACBA8E18F52BCF7C34A3D /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Connex/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Connex.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Connex.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Connex/Images.xcassets; sourceTree = "<group>"; };
@@ -111,7 +111,6 @@
 				F2B59022141817A2D7C8C82D /* Pods-Connex.debug.xcconfig */,
 				43065545185FD5884BDADE23 /* Pods-Connex.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -167,7 +166,6 @@
 				LastUpgradeCheck = 1130;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
-						DevelopmentTeam = 2X35AST9LY;
 						LastSwiftMigration = 1250;
 						ProvisioningStyle = Automatic;
 					};
@@ -437,7 +435,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.tlake.connexapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.connex.app;
 				PRODUCT_NAME = Connex;
 				SWIFT_OBJC_BRIDGING_HEADER = "Connex/Connex-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -471,7 +469,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.tlake.connexapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.connex.app;
 				PRODUCT_NAME = Connex;
 				SWIFT_OBJC_BRIDGING_HEADER = "Connex/Connex-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

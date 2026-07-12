@@ -37,7 +37,6 @@ export default function usePresence() {
 
     return () => {
       sub.remove();
-      goOffline();
     };
   }, [sessionId]);
 }

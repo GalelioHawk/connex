@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.tlake.connexapp",
+      "bundleIdentifier": "com.connex.app",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Allow Connex to access your microphone for voice and video calls.",
         "NSCameraUsageDescription": "Allow Connex to access your camera for video calls."

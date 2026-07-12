@@ -55,6 +55,21 @@ function formatLastSeen(ts: number): string {
   return d.format('DD/MM/YY');
 }
 
+// Predefined set of premium vibrant avatar colors based on name hashing
+function getAvatarColor(name: string): string {
+  const code = name.charCodeAt(0) || 0;
+  const colors = [
+    '#FF6B6B', // Coral Red
+    '#4D96FF', // Royal Blue
+    '#6BCB77', // Emerald Green
+    '#FFD93D', // Amber Yellow
+    '#9B5DE5', // Amethyst Purple
+    '#F15BB5', // Hot Pink
+    '#00F5D4', // Turquoise
+  ];
+  return colors[code % colors.length];
+}
+
 export default function ChatRoomScreen() {
   const navigation = useNavigation();
   const route      = useRoute<RouteType>();
@@ -77,12 +92,19 @@ export default function ChatRoomScreen() {
     sessionId ? { sessionId: sessionId as Id<'sessions'>, conversationId: conversationId as Id<'conversations'> } : 'skip',
   );
 
-  const sendMessageMutation   = useMutation(api.chat.sendMessage);
-  const deleteMessageMutation = useMutation(api.chat.deleteMessage);
-  const markReadMutation      = useMutation(api.chat.markRead);
-  const initiateCallMutation  = useMutation(api.calls.initiateCall);
-  const generateUploadUrl     = useMutation(api.chat.generateUploadUrl);
-  const getMediaUrl           = useMutation(api.chat.getMediaUrl);
+  const conversation = useQuery(
+    api.chat.getConversation,
+    sessionId ? { sessionId: sessionId as Id<'sessions'>, conversationId: conversationId as Id<'conversations'> } : 'skip',
+  );
+
+  const sendMessageMutation      = useMutation(api.chat.sendMessage);
+  const deleteMessageMutation    = useMutation(api.chat.deleteMessage);
+  const markReadMutation         = useMutation(api.chat.markRead);
+  const initiateCallMutation     = useMutation(api.calls.initiateCall);
+  const generateUploadUrl        = useMutation(api.chat.generateUploadUrl);
+  const getMediaUrl              = useMutation(api.chat.getMediaUrl);
+  const acceptConversationMut    = useMutation(api.chat.acceptConversation);
+  const declineConversationMut   = useMutation(api.chat.declineConversation);
 
   // ─── Mark read when screen opens / messages load ──────────────────────────
   useEffect(() => {
@@ -222,6 +244,96 @@ export default function ChatRoomScreen() {
     }
   }
 
+  // ─── Accept / Decline Requests ─────────────────────────────────────────────
+  async function handleAccept() {
+    try {
+      await acceptConversationMut({
+        sessionId:      sessionId as Id<'sessions'>,
+        conversationId: conversationId as Id<'conversations'>,
+      });
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to accept message request.');
+    }
+  }
+
+  async function handleDecline() {
+    Alert.alert(
+      'Decline Request',
+      'Are you sure you want to decline this request? This will permanently delete the conversation.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Decline', style: 'destructive',
+          onPress: async () => {
+            try {
+              await declineConversationMut({
+                sessionId:      sessionId as Id<'sessions'>,
+                conversationId: conversationId as Id<'conversations'>,
+              });
+              navigation.goBack();
+            } catch (err: any) {
+              Alert.alert('Error', err.message ?? 'Failed to decline request.');
+            }
+          }
+        }
+      ]
+    );
+  }
+
+  async function handleBlock() {
+    Alert.alert(
+      'Block ' + title,
+      'Are you sure you want to block this user? They will not be able to find you or message you.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block', style: 'destructive',
+          onPress: async () => {
+            try {
+              // Decline and delete conversation (acts as block for now)
+              await declineConversationMut({
+                sessionId:      sessionId as Id<'sessions'>,
+                conversationId: conversationId as Id<'conversations'>,
+              });
+              navigation.goBack();
+              Alert.alert('Blocked', 'You have blocked ' + title);
+            } catch (err: any) {
+              Alert.alert('Error', err.message ?? 'Failed to block user.');
+            }
+          }
+        }
+      ]
+    );
+  }
+
+  function renderRequestHeader() {
+    const name = title ?? 'Unknown User';
+    const initials = name.charAt(0).toUpperCase();
+    const avatarBg = getAvatarColor(name);
+
+    return (
+      <View style={s.requestHeaderContainer}>
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={s.requestHeaderAvatar} />
+        ) : (
+          <View style={[s.requestHeaderAvatar, { backgroundColor: avatarBg }]}>
+            <Text style={s.requestHeaderAvatarText}>{initials}</Text>
+          </View>
+        )}
+        <Text style={[s.requestHeaderName, { color: colors.text }]}>{name}</Text>
+        {userId && (
+          <Text style={[s.requestHeaderSub, { color: colors.textSecondary }]}>Connex Member</Text>
+        )}
+        <View style={[s.requestHeaderCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Ionicons name="shield-checkmark-outline" size={20} color={colors.accent} style={{ marginBottom: 4 }} />
+          <Text style={[s.requestHeaderCardText, { color: colors.textSecondary }]}>
+            This request is from someone not in your contacts. They won't know you've read their messages until you accept.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   const loading = messages === undefined;
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -234,7 +346,12 @@ export default function ChatRoomScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={s.headerProfile}
-          onPress={() => (navigation as any).navigate('ContactInfo', { title, avatarUrl, userId })}
+          onPress={() => (navigation as any).navigate(
+            conversation?.type === 'group' ? 'GroupInfo' : 'ContactInfo',
+            conversation?.type === 'group'
+              ? { conversationId, title }
+              : { title, avatarUrl, userId },
+          )}
           activeOpacity={0.75}
         >
           {avatarUrl ? (
@@ -277,14 +394,15 @@ export default function ChatRoomScreen() {
           </View>
         ) : messages!.length === 0 ? (
           <View style={s.center}>
-            <Ionicons name="chatbubble-ellipses-outline" size={48} color={colors.textMuted} />
-            <Text style={[s.emptyText, { color: colors.textSecondary }]}>No messages yet{'\n'}Say hello</Text>
+            <Ionicons name="chatbubble-ellipses-outline" size={28} color={colors.textMuted} />
+            <Text style={[s.emptyText, { color: colors.textMuted, fontSize: 13, marginTop: 4 }]}>No messages yet</Text>
           </View>
         ) : (
           <FlatList
             ref={flatRef}
             data={buildListItems(messages!)}
             keyExtractor={(item, i) => item.type === 'separator' ? `sep-${i}` : item.data.id}
+            ListHeaderComponent={conversation?.status === 'pending' && conversation?.created_by !== user.id ? renderRequestHeader : null}
             contentContainerStyle={s.messageList}
             renderItem={({ item }) => {
               if (item.type === 'separator') {
@@ -316,7 +434,40 @@ export default function ChatRoomScreen() {
           />
         )}
 
-        <ChatInput onSend={handleSend} onSendMedia={handleSendMedia} />
+        {conversation?.status === 'pending' && conversation?.created_by !== user.id ? (
+          <View style={[s.requestBanner, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+            <Text style={[s.requestSubtext, { color: colors.textSecondary, fontSize: fonts.xs }]}>
+              If you accept, they will be able to message and call you, and see details like your active status and when you've read messages.
+            </Text>
+            <View style={s.requestButtonsHorizontal}>
+              <TouchableOpacity
+                style={[s.btnMuted, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={handleBlock}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.btnMutedText, { color: colors.textSecondary, fontSize: fonts.sm }]}>Block</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[s.btnMuted, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={handleDecline}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.btnMutedText, { color: '#FF4D4D', fontSize: fonts.sm }]}>Delete</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[s.btnAcceptFilled, { backgroundColor: colors.accent }]}
+                onPress={handleAccept}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.btnAcceptFilledText, { fontSize: fonts.sm }]}>Accept</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <ChatInput onSend={handleSend} onSendMedia={handleSendMedia} />
+        )}
       </KeyboardAvoidingView>
 
     </SafeAreaView>
@@ -340,4 +491,136 @@ const s = StyleSheet.create({
   dateSepText:   { fontSize: 12, fontWeight: '600', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, overflow: 'hidden' },
   center:        { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   emptyText:     { fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  requestBanner: {
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    borderTopWidth: 1,
+    alignItems: 'stretch',
+    gap: 12,
+  },
+  requestText: {
+    textAlign: 'center',
+    lineHeight: 20,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  requestSubtext: {
+    textAlign: 'center',
+    lineHeight: 16,
+    fontWeight: '500',
+    marginHorizontal: 8,
+  },
+  requestButtonsHorizontal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 4,
+  },
+  btnMuted: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnMutedText: {
+    fontWeight: '600',
+  },
+  btnAcceptFilled: {
+    flex: 1.2,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnAcceptFilledText: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
+  requestHeaderContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  requestHeaderAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  requestHeaderAvatarText: {
+    color: '#ffffff',
+    fontSize: 32,
+    fontWeight: '800',
+  },
+  requestHeaderName: {
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 12,
+    letterSpacing: -0.3,
+  },
+  requestHeaderSub: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  requestHeaderCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  requestHeaderCardText: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  btnDecline: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnDeclineText: {
+    fontWeight: '700',
+  },
+  btnAccept: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnAcceptText: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    borderTopWidth: 1,
+    gap: 8,
+  },
+  pendingText: {
+    fontWeight: '600',
+  },
 });

@@ -8,17 +8,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../store/authStore';
 import { chatService } from '../../services/chat';
+import { useTheme } from '../../hooks/useTheme';
 
 interface SearchUser {
   id:         string;
   name:       string;
-  phone:      string;
+  phone:      string | null;
   avatar_url: string | null;
 }
 
 export default function NewGroupScreen() {
   const navigation  = useNavigation<any>();
   const sessionId = useAuthStore((s) => s.sessionId)!;
+  const { colors } = useTheme();
 
   const [groupName, setGroupName]   = useState('');
   const [search, setSearch]         = useState('');
@@ -26,7 +28,11 @@ export default function NewGroupScreen() {
   const [selected, setSelected]     = useState<SearchUser[]>([]);
   const [searching, setSearching]   = useState(false);
   const [creating, setCreating]     = useState(false);
-  const searchTimer                 = React.useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer                 = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+  }, []);
 
   function handleSearchChange(text: string) {
     setSearch(text);
@@ -67,14 +73,14 @@ export default function NewGroupScreen() {
   }
 
   return (
-    <SafeAreaView style={s.root} edges={['top']}>
+    <SafeAreaView style={[s.root, { backgroundColor: colors.background }]} edges={['top']}>
 
       {/* Header */}
-      <View style={s.header}>
+      <View style={[s.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="close" size={24} color="#FFFFFF" />
+          <Ionicons name="close" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={s.title}>New group</Text>
+        <Text style={[s.title, { color: colors.text }]}>New group</Text>
         <TouchableOpacity
           style={[s.createBtn, (!groupName.trim() || selected.length === 0) && s.createBtnDisabled]}
           onPress={handleCreate}
@@ -88,14 +94,14 @@ export default function NewGroupScreen() {
       </View>
 
       {/* Group name */}
-      <View style={s.nameRow}>
+      <View style={[s.nameRow, { borderBottomColor: colors.border }]}>
         <View style={s.groupIcon}>
           <Ionicons name="people" size={22} color="#fff" />
         </View>
         <TextInput
-          style={s.nameInput}
+          style={[s.nameInput, { color: colors.text, borderBottomColor: colors.accent }]}
           placeholder="Group name"
-          placeholderTextColor="#B0BEC5"
+          placeholderTextColor={colors.textMuted}
           value={groupName}
           onChangeText={setGroupName}
           maxLength={100}
@@ -116,12 +122,12 @@ export default function NewGroupScreen() {
       )}
 
       {/* Search */}
-      <View style={s.searchWrap}>
+      <View style={[s.searchWrap, { backgroundColor: colors.surface }]}>
         <Ionicons name="search-outline" size={18} color="#8A9BB0" />
         <TextInput
-          style={s.searchInput}
+          style={[s.searchInput, { color: colors.text }]}
           placeholder="Search name or number"
-          placeholderTextColor="#B0BEC5"
+          placeholderTextColor={colors.textMuted}
           value={search}
           onChangeText={handleSearchChange}
         />
@@ -140,8 +146,8 @@ export default function NewGroupScreen() {
                 <Text style={s.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
               </View>
               <View style={s.userInfo}>
-                <Text style={s.userName}>{item.name}</Text>
-                <Text style={s.userPhone}>{item.phone}</Text>
+                <Text style={[s.userName, { color: colors.text }]}>{item.name}</Text>
+                <Text style={[s.userPhone, { color: colors.textSecondary }]}>{item.phone ?? 'Phone number private'}</Text>
               </View>
               <View style={[s.check, isSelected && s.checkSelected]}>
                 {isSelected && <Ionicons name="checkmark" size={16} color="#fff" />}
@@ -152,7 +158,7 @@ export default function NewGroupScreen() {
         ListEmptyComponent={
           search.length >= 2 && !searching ? (
             <View style={s.empty}>
-              <Text style={s.emptyText}>No users found</Text>
+              <Text style={[s.emptyText, { color: colors.textMuted }]}>No users found</Text>
             </View>
           ) : null
         }

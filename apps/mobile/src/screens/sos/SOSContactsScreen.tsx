@@ -11,6 +11,7 @@ import { api } from '../../../convex/_generated/api';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../hooks/useTheme';
 import type { Id } from '../../../convex/_generated/dataModel';
+import SOSButton from '../../components/chat/SOSButton';
 
 export default function SOSContactsScreen() {
   const navigation     = useNavigation();
@@ -19,11 +20,12 @@ export default function SOSContactsScreen() {
 
   const [search,         setSearch]         = useState('');
   const [searchDebounce, setSearchDebounce] = useState('');
-  const searchTimer = React.useRef<ReturnType<typeof setTimeout>>();
+  const [scrollEnabled,  setScrollEnabled]  = useState(true);
+  const searchTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const contacts        = useQuery(api.sos.listContacts,         sessionId ? { sessionId: sessionId as Id<'sessions'> } : 'skip');
   const incoming        = useQuery(api.sos.listIncomingRequests, sessionId ? { sessionId: sessionId as Id<'sessions'> } : 'skip');
-  const searchResults   = useQuery(api.users.search,             sessionId && searchDebounce.length >= 2 ? { sessionId: sessionId as Id<'sessions'>, q: searchDebounce } : 'skip');
+  const searchResults   = useQuery(api.sos.searchSOSEligibleUsers, sessionId && searchDebounce.length >= 2 ? { sessionId: sessionId as Id<'sessions'>, q: searchDebounce } : 'skip');
 
   const sendRequestMutation    = useMutation(api.sos.sendRequest);
   const respondToRequestMutation = useMutation(api.sos.respondToRequest);
@@ -77,6 +79,7 @@ export default function SOSContactsScreen() {
       <FlatList
         data={[]}
         renderItem={null}
+        scrollEnabled={scrollEnabled}
         ListHeaderComponent={
           <View>
             <View style={s.infoCard}>
@@ -84,6 +87,12 @@ export default function SOSContactsScreen() {
               <Text style={[s.infoText, { fontSize: fonts.sm }]}>
                 These people will be notified when you trigger an SOS. Both of you must accept to be connected.
               </Text>
+            </View>
+
+            {/* Emergency SOS Press-and-Hold Button */}
+            <View style={{ alignItems: 'center', marginVertical: 20 }}>
+              <Text style={{ color: '#8E8E93', fontSize: 11, fontWeight: '700', marginBottom: 12, letterSpacing: 0.8 }}>TRIGGER EMERGENCY ALERT</Text>
+              <SOSButton setScrollEnabled={setScrollEnabled} />
             </View>
 
             <Text style={s.sectionTitle}>ADD CONTACT</Text>
@@ -119,7 +128,7 @@ export default function SOSContactsScreen() {
                 {incoming!.map((req) => (
                   <View key={req.id} style={s.userRow}>
                     <View style={s.avatar}>
-                      <Text style={s.avatarText}>{req.requester?.name.charAt(0).toUpperCase() ?? '?'}</Text>
+                      <Text style={s.avatarText}>{req.requester?.name ? req.requester.name.charAt(0).toUpperCase() : '?'}</Text>
                     </View>
                     <View style={s.userInfo}>
                       <Text style={[s.userName, { fontSize: fonts.md }]}>{req.requester?.name ?? 'Unknown'}</Text>
@@ -147,7 +156,7 @@ export default function SOSContactsScreen() {
             {accepted.map((c) => (
               <View key={c.id} style={s.userRow}>
                 <View style={s.avatar}>
-                  <Text style={s.avatarText}>{c.contact?.name.charAt(0).toUpperCase() ?? '?'}</Text>
+                  <Text style={s.avatarText}>{c.contact?.name ? c.contact.name.charAt(0).toUpperCase() : '?'}</Text>
                 </View>
                 <View style={s.userInfo}>
                   <Text style={[s.userName, { fontSize: fonts.md }]}>{c.contact?.name ?? 'Unknown'}</Text>
@@ -161,7 +170,7 @@ export default function SOSContactsScreen() {
                 {pending.map((c) => (
                   <View key={c.id} style={[s.userRow, s.pendingRow]}>
                     <View style={[s.avatar, s.avatarPending]}>
-                      <Text style={s.avatarText}>{c.contact?.name.charAt(0).toUpperCase() ?? '?'}</Text>
+                      <Text style={s.avatarText}>{c.contact?.name ? c.contact.name.charAt(0).toUpperCase() : '?'}</Text>
                     </View>
                     <View style={s.userInfo}>
                       <Text style={[s.userName, { fontSize: fonts.md }]}>{c.contact?.name ?? 'Unknown'}</Text>

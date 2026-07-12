@@ -93,7 +93,7 @@ export default function StatusCreatorScreen() {
         });
       } else if (media) {
         // Upload to Convex storage
-        const uploadUrl = await generateUploadUrl({});
+        const uploadUrl = await generateUploadUrl({ sessionId: sessionId as Id<'sessions'> });
 
         const response  = await fetch(media.uri);
         const blob      = await response.blob();
