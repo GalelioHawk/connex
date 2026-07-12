@@ -5,7 +5,7 @@
 import { query, mutation, internalMutation, internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { requireSession, toIso } from "./_helpers";
+import { enforceRateLimit, requireSession, toIso } from "./_helpers";
 import { Id } from "./_generated/dataModel";
 
 // ─── Helper: enrich message with sender ───────────────────────────────────────
@@ -42,6 +42,16 @@ export const listConversations = query({
       memberships.map(async (m: any) => {
         const conv = await ctx.db.get(m.conversationId) as any;
         if (!conv) return null;
+
+        // Skip pending requests where current user is NOT the creator (they go to requests folder)
+        if (conv.type === "direct" && conv.status === "pending" && conv.createdBy !== userId) {
+          return null;
+        }
+
+        // Skip declined conversations
+        if (conv.status === "declined") {
+          return null;
+        }
 
         // Last message
         const msgs = await ctx.db
@@ -193,6 +203,7 @@ export const createConversation = mutation({
       type,
       name:      name ?? undefined,
       createdBy: userId,
+      status:    type === "direct" ? "pending" : undefined,
     });
 
     const allMembers = Array.from(new Set([userId, ...memberIds]));
@@ -237,6 +248,7 @@ export const sendMessage = mutation({
   },
   handler: async (ctx, { sessionId, conversationId, content, type = "text", mediaUrl }) => {
     const { userId, user } = await requireSession(ctx, sessionId);
+    await enforceRateLimit(ctx, `chat:send:${userId}`, 60, 60 * 1000);
 
     const membership = await ctx.db
       .query("conversationMembers")
@@ -262,6 +274,7 @@ export const sendMessage = mutation({
       senderName:     user.name,
       messageId:      messageId as string,
       content,
+      messageType:    type,
     });
 
     const msg = await ctx.db.get(messageId);
@@ -374,12 +387,15 @@ export const getOtherUserPresence = query({
     if (!other) return null;
 
     const hideActivity = other.showOnlineStatus === 'nobody';
+    const hideLastSeen = other.showLastSeen === 'nobody';
+
     return {
       isOnline: hideActivity ? false : (other.isOnline ?? false),
-      lastSeen: (hideActivity || other.showLastSeen === 'nobody') ? null : (other.lastSeen ?? null),
+      lastSeen: (hideActivity || hideLastSeen) ? null : (other.lastSeen ?? null),
     };
   },
 });
+
 
 // ─── Delete message ───────────────────────────────────────────────────────────
 export const deleteMessage = mutation({
@@ -399,5 +415,331 @@ export const deleteMessage = mutation({
 
     await ctx.db.patch(messageId, patch);
     return { ok: true };
+  },
+});
+
+// ─── List message requests (reactive query) ───────────────────────────────────
+export const listMessageRequests = query({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, { sessionId }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+
+    const memberships = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_user", (q: any) => q.eq("userId", userId))
+      .collect();
+
+    const requests = await Promise.all(
+      memberships.map(async (m: any) => {
+        const conv = await ctx.db.get(m.conversationId) as any;
+        if (!conv) return null;
+
+        // We only want direct messages that are pending and NOT created by us (incoming requests)
+        if (conv.type !== "direct" || conv.status !== "pending" || conv.createdBy === userId) {
+          return null;
+        }
+
+        // Get the last message
+        const msgs = await ctx.db
+          .query("messages")
+          .withIndex("by_conversation", (q: any) => q.eq("conversationId", conv._id))
+          .order("desc")
+          .take(1);
+        const lastMsg = msgs[0] ?? null;
+
+        // Get the other user details
+        const otherMember = await ctx.db
+          .query("conversationMembers")
+          .withIndex("by_conversation", (q: any) => q.eq("conversationId", conv._id))
+          .filter((q: any) => q.neq(q.field("userId"), userId))
+          .first();
+
+        let otherUser = null;
+        if (otherMember) {
+          const u = await ctx.db.get(otherMember.userId);
+          if (u) {
+            otherUser = {
+              id:         u._id,
+              name:       u.name,
+              avatar_url: u.avatarUrl ?? null,
+            };
+          }
+        }
+
+        return {
+          id:           conv._id                 as string,
+          type:         conv.type,
+          created_by:   conv.createdBy           as string,
+          created_at:   toIso(conv._creationTime),
+          other_user:   otherUser,
+          last_message: lastMsg ? {
+            id:         lastMsg._id              as string,
+            content:    lastMsg.content          ?? null,
+            type:       lastMsg.type,
+            created_at: toIso(lastMsg._creationTime),
+          } : null,
+        };
+      })
+    );
+
+    return requests.filter(Boolean);
+  },
+});
+
+// ─── Accept conversation request ─────────────────────────────────────────────
+export const acceptConversation = mutation({
+  args: {
+    sessionId:      v.id("sessions"),
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, { sessionId, conversationId }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+
+    // Verify membership
+    const membership = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation_user", (q: any) =>
+        q.eq("conversationId", conversationId).eq("userId", userId)
+      )
+      .first();
+    if (!membership) throw new Error("Not a member of this conversation.");
+
+    const conv = await ctx.db.get(conversationId);
+    if (!conv) throw new Error("Conversation not found.");
+
+    await ctx.db.patch(conversationId, { status: "accepted" });
+    return { ok: true };
+  },
+});
+
+// ─── Decline conversation request (delete it) ────────────────────────────────
+export const declineConversation = mutation({
+  args: {
+    sessionId:      v.id("sessions"),
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, { sessionId, conversationId }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+
+    // Verify membership
+    const membership = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation_user", (q: any) =>
+        q.eq("conversationId", conversationId).eq("userId", userId)
+      )
+      .first();
+    if (!membership) throw new Error("Not a member of this conversation.");
+
+    // Delete all conversation members
+    const members = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation", (q: any) => q.eq("conversationId", conversationId))
+      .collect();
+    for (const m of members) {
+      await ctx.db.delete(m._id);
+    }
+
+    // Delete all messages in the conversation
+    const msgs = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q: any) => q.eq("conversationId", conversationId))
+      .collect();
+    for (const m of msgs) {
+      await ctx.db.delete(m._id);
+    }
+
+    // Delete the conversation document
+    await ctx.db.delete(conversationId);
+    return { ok: true };
+  },
+});
+
+// ─── Get conversation details (reactive query) ────────────────────────────────
+export const getConversation = query({
+  args: {
+    sessionId:      v.id("sessions"),
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, { sessionId, conversationId }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+    const conv = await ctx.db.get(conversationId);
+    if (!conv) return null;
+    const membership = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation_user", (q) =>
+        q.eq("conversationId", conversationId).eq("userId", userId),
+      )
+      .unique();
+    if (!membership) throw new Error("Not a member of this conversation.");
+
+    const memberships = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+      .collect();
+    const members = await Promise.all(memberships.map(async (member) => {
+      const memberUser = await ctx.db.get(member.userId);
+      return memberUser ? {
+        id:         memberUser._id as string,
+        name:       memberUser.name,
+        avatar_url: memberUser.avatarUrl ?? null,
+        role:       member.role,
+        is_me:      member.userId === userId,
+      } : null;
+    }));
+    return {
+      id:         conv._id                 as string,
+      type:       conv.type,
+      name:       conv.name                ?? null,
+      image_url:  conv.imageUrl            ?? null,
+      created_by: conv.createdBy           as string,
+      status:     conv.status              ?? null,
+      my_role:    membership.role,
+      members:    members.filter((member) => member !== null),
+    };
+  },
+});
+
+// ─── Group management ───────────────────────────────────────────────────────
+export const updateGroup = mutation({
+  args: {
+    sessionId:      v.id("sessions"),
+    conversationId: v.id("conversations"),
+    name:           v.optional(v.string()),
+    imageUrl:       v.optional(v.string()),
+  },
+  handler: async (ctx, { sessionId, conversationId, name, imageUrl }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation || conversation.type !== "group") throw new Error("Group not found.");
+    const membership = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation_user", (q) =>
+        q.eq("conversationId", conversationId).eq("userId", userId),
+      )
+      .unique();
+    if (membership?.role !== "admin") throw new Error("Only group admins can edit the group.");
+
+    const patch: { name?: string; imageUrl?: string } = {};
+    if (name !== undefined) {
+      const trimmed = name.trim();
+      if (trimmed.length < 2 || trimmed.length > 100) {
+        throw new Error("Group name must be between 2 and 100 characters.");
+      }
+      patch.name = trimmed;
+    }
+    if (imageUrl !== undefined) patch.imageUrl = imageUrl;
+    if (Object.keys(patch).length) await ctx.db.patch(conversationId, patch);
+    return { ok: true };
+  },
+});
+
+export const addGroupMembers = mutation({
+  args: {
+    sessionId:      v.id("sessions"),
+    conversationId: v.id("conversations"),
+    userIds:        v.array(v.id("users")),
+  },
+  handler: async (ctx, { sessionId, conversationId, userIds }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation || conversation.type !== "group") throw new Error("Group not found.");
+    const admin = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation_user", (q) =>
+        q.eq("conversationId", conversationId).eq("userId", userId),
+      )
+      .unique();
+    if (admin?.role !== "admin") throw new Error("Only group admins can add members.");
+
+    let added = 0;
+    for (const targetUserId of Array.from(new Set(userIds))) {
+      const target = await ctx.db.get(targetUserId);
+      if (!target?.isActive) continue;
+      const existing = await ctx.db
+        .query("conversationMembers")
+        .withIndex("by_conversation_user", (q) =>
+          q.eq("conversationId", conversationId).eq("userId", targetUserId),
+        )
+        .unique();
+      if (!existing) {
+        await ctx.db.insert("conversationMembers", {
+          conversationId,
+          userId: targetUserId,
+          role: "member",
+        });
+        added += 1;
+      }
+    }
+    return { added };
+  },
+});
+
+export const removeGroupMember = mutation({
+  args: {
+    sessionId:      v.id("sessions"),
+    conversationId: v.id("conversations"),
+    userId:         v.id("users"),
+  },
+  handler: async (ctx, { sessionId, conversationId, userId: targetUserId }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+    const admin = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation_user", (q) =>
+        q.eq("conversationId", conversationId).eq("userId", userId),
+      )
+      .unique();
+    if (admin?.role !== "admin") throw new Error("Only group admins can remove members.");
+    if (targetUserId === userId) throw new Error("Use leave group to remove yourself.");
+    const target = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation_user", (q) =>
+        q.eq("conversationId", conversationId).eq("userId", targetUserId),
+      )
+      .unique();
+    if (!target) throw new Error("Member not found.");
+    await ctx.db.delete(target._id);
+    return { ok: true };
+  },
+});
+
+export const leaveGroup = mutation({
+  args: {
+    sessionId:      v.id("sessions"),
+    conversationId: v.id("conversations"),
+  },
+  handler: async (ctx, { sessionId, conversationId }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation || conversation.type !== "group") throw new Error("Group not found.");
+    const membership = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation_user", (q) =>
+        q.eq("conversationId", conversationId).eq("userId", userId),
+      )
+      .unique();
+    if (!membership) throw new Error("You are not a member of this group.");
+
+    const members = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+      .collect();
+    await ctx.db.delete(membership._id);
+
+    const remaining = members.filter((member) => member._id !== membership._id);
+    if (remaining.length === 0) {
+      const messages = await ctx.db
+        .query("messages")
+        .withIndex("by_conversation", (q) => q.eq("conversationId", conversationId))
+        .collect();
+      for (const message of messages) await ctx.db.delete(message._id);
+      await ctx.db.delete(conversationId);
+      return { deleted: true };
+    }
+
+    if (membership.role === "admin" && !remaining.some((member) => member.role === "admin")) {
+      const nextAdmin = remaining.sort((a, b) => a._creationTime - b._creationTime)[0];
+      await ctx.db.patch(nextAdmin._id, { role: "admin" });
+    }
+    return { deleted: false };
   },
 });

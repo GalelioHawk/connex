@@ -55,13 +55,14 @@ export const _sendCallPush = internalAction({
   },
   handler: async (ctx, args) => {
     const callee = await ctx.runQuery(internal.calls._getUser, { userId: args.calleeId });
-    if (!callee?.fcmToken) return;
+    const pushToken = callee?.expoPushToken || callee?.fcmToken;
+    if (!pushToken) return;
 
     await fetch("https://exp.host/--/api/v2/push/send", {
       method:  "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        to:       callee.fcmToken,
+        to:       pushToken,
         title:    `${args.callerName} is calling...`,
         body:     args.callType === "video" ? "Incoming video call" : "Incoming voice call",
         sound:    "default",

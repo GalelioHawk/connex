@@ -8,8 +8,11 @@ import { internalAction } from "./_generated/server";
 export const generate = internalAction({
   args: { channelName: v.string(), uid: v.number() },
   handler: async (_ctx, { channelName, uid }) => {
-    const appId          = process.env.AGORA_APP_ID!;
-    const appCertificate = process.env.AGORA_APP_CERTIFICATE!;
+    const appId          = process.env.AGORA_APP_ID;
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE;
+    if (!appId || !appCertificate) {
+      throw new Error("Agora server credentials are not configured.");
+    }
     const { RtcTokenBuilder, RtcRole } = require("agora-token");
     const expireSeconds = 3600;
     const token = RtcTokenBuilder.buildTokenWithUid(

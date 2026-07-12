@@ -1,4 +1,4 @@
-import { query, mutation, action, internalQuery } from "./_generated/server";
+import { query, mutation, action, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { requireSession, toIso } from "./_helpers";
@@ -62,6 +62,55 @@ export const listIncomingRequests = query({
   },
 });
 
+// ─── Search users eligible to be added as SOS contacts (must have accepted direct chat) ───
+export const searchSOSEligibleUsers = query({
+  args: {
+    sessionId: v.id("sessions"),
+    q:         v.string(),
+  },
+  handler: async (ctx, { sessionId, q }) => {
+    const { userId } = await requireSession(ctx, sessionId);
+    if (q.trim().length < 2) return [];
+
+    const memberships = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_user", (q: any) => q.eq("userId", userId))
+      .collect();
+
+    const eligibleUsers: any[] = [];
+    const searchTerm = q.trim().toLowerCase();
+
+    for (const m of memberships) {
+      const convo = await ctx.db.get(m.conversationId);
+      if (convo && convo.type === "direct" && convo.status === "accepted") {
+        const otherMember = await ctx.db
+          .query("conversationMembers")
+          .withIndex("by_conversation", (q: any) => q.eq("conversationId", m.conversationId))
+          .filter((q: any) => q.neq(q.field("userId"), userId))
+          .first();
+
+        if (otherMember) {
+          const u = await ctx.db.get(otherMember.userId);
+          if (u && u.isActive) {
+            const nameMatch = u.name.toLowerCase().includes(searchTerm);
+            const phoneMatch = u.phone.toLowerCase().includes(searchTerm);
+            if (nameMatch || phoneMatch) {
+              eligibleUsers.push({
+                id:         u._id,
+                name:       u.name,
+                phone:      (u.showPhone === false) ? null : u.phone,
+                avatar_url: u.avatarUrl ?? null,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return eligibleUsers;
+  },
+});
+
 // ─── Send SOS contact request ─────────────────────────────────────────────────
 export const sendRequest = mutation({
   args: {
@@ -71,6 +120,33 @@ export const sendRequest = mutation({
   handler: async (ctx, { sessionId, contactUserId }) => {
     const { userId } = await requireSession(ctx, sessionId);
     if (userId === contactUserId) throw new Error("Cannot add yourself.");
+
+    // Ensure there is an active, accepted direct conversation between the two users
+    const memberships = await ctx.db
+      .query("conversationMembers")
+      .withIndex("by_user", (q: any) => q.eq("userId", userId))
+      .collect();
+
+    let acceptedConvoExists = false;
+    for (const m of memberships) {
+      const convo = await ctx.db.get(m.conversationId);
+      if (convo && convo.type === "direct" && convo.status === "accepted") {
+        const isTargetMember = await ctx.db
+          .query("conversationMembers")
+          .withIndex("by_conversation_user", (q: any) =>
+            q.eq("conversationId", m.conversationId).eq("userId", contactUserId),
+          )
+          .first();
+        if (isTargetMember) {
+          acceptedConvoExists = true;
+          break;
+        }
+      }
+    }
+
+    if (!acceptedConvoExists) {
+      throw new Error("You must have an accepted active chat with this contact before adding them as an SOS contact.");
+    }
 
     const existing = await ctx.db
       .query("sosContacts")
@@ -88,6 +164,7 @@ export const sendRequest = mutation({
     return { ok: true };
   },
 });
+
 
 // ─── Respond to request ───────────────────────────────────────────────────────
 export const respondToRequest = mutation({
@@ -128,54 +205,20 @@ export const respondToRequest = mutation({
 // ─── Trigger SOS alert ────────────────────────────────────────────────────────
 export const triggerAlert = action({
   args: { sessionId: v.id("sessions") },
-  handler: async (ctx, { sessionId }) => {
-    const user = await ctx.runQuery(internal.sos.getSessionUser, { sessionId });
+  handler: async (ctx, { sessionId }): Promise<{ ok: boolean; notified: number }> => {
+    const user = await ctx.runQuery(internal.sos_internal.getSessionUser, { sessionId }) as any;
     if (!user) throw new Error("Not authenticated.");
+    await ctx.runMutation(internal.sos_internal.checkAlertRateLimit, { userId: user._id });
 
-    const acceptedContacts = await ctx.runQuery(internal.sos.getAcceptedContacts, {
+    // 1. Broadcast real-time emergency system DMs to all mutual contacts!
+    await ctx.runMutation(internal.sos_internal.broadcastSOSAlert, { userId: user._id });
+
+    // 2. Fetch accepted contacts to count notified count
+    const acceptedContacts = await ctx.runQuery(internal.sos_internal.getAcceptedContacts, {
       userId: user._id,
-    });
+    }) as any;
 
-    const tokens = acceptedContacts
-      .map((c: any) => c.fcmToken)
-      .filter(Boolean) as string[];
-
-    if (!tokens.length) return { ok: true, notified: 0 };
-
-    // Send FCM push to all accepted SOS contacts
-    const serviceAccountJson = process.env.FCM_SERVICE_ACCOUNT_JSON;
-    if (!serviceAccountJson) {
-      console.warn("[sos] FCM_SERVICE_ACCOUNT_JSON not set.");
-      return { ok: true, notified: 0 };
-    }
-
-    console.log(`[sos] SOS triggered by ${user.name} — would notify ${tokens.length} contacts.`);
-
-    return { ok: true, notified: tokens.length };
-  },
-});
-
-// ─── Internal queries ─────────────────────────────────────────────────────────
-export const getSessionUser = internalQuery({
-  args: { sessionId: v.id("sessions") },
-  handler: async (ctx, { sessionId }): Promise<Doc<"users"> | null> => {
-    const session = await ctx.db.get(sessionId) as any;
-    if (!session) return null;
-    return ctx.db.get(session.userId as Id<"users">);
-  },
-});
-
-export const getAcceptedContacts = internalQuery({
-  args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
-    const contacts = await ctx.db
-      .query("sosContacts")
-      .withIndex("by_user", (q: any) => q.eq("userId", userId))
-      .filter((q: any) => q.eq(q.field("status"), "accepted"))
-      .collect();
-
-    return Promise.all(
-      contacts.map((c: any) => ctx.db.get(c.contactUserId)),
-    ).then((users) => users.filter(Boolean));
+    // Each emergency system message schedules the standard Expo push action.
+    return { ok: true, notified: acceptedContacts.length };
   },
 });

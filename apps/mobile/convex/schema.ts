@@ -8,7 +8,8 @@ export default defineSchema({
     name:         v.string(),
     passwordHash: v.string(),
     avatarUrl:    v.optional(v.string()),
-    fcmToken:     v.optional(v.string()),
+    expoPushToken: v.optional(v.string()),
+    fcmToken:      v.optional(v.string()), // legacy field; read only during migration
     bio:          v.optional(v.string()),
     areaId:       v.optional(v.string()),
     province:     v.optional(v.string()),
@@ -23,6 +24,7 @@ export default defineSchema({
     readReceipts:         v.optional(v.boolean()),
     showPhone:            v.optional(v.boolean()),
     notificationPreview:  v.optional(v.boolean()),
+    role:                 v.optional(v.union(v.literal("admin"), v.literal("user"))),
   })
     .index("by_phone", ["phone"])
     .searchIndex("search_name",  { searchField: "name",  filterFields: ["isActive"] })
@@ -34,12 +36,19 @@ export default defineSchema({
     expiresAt: v.number(), // Unix ms
   }).index("by_user", ["userId"]),
 
+  rateLimits: defineTable({
+    key:         v.string(),
+    count:       v.number(),
+    windowStart: v.number(),
+  }).index("by_key", ["key"]),
+
   // ─── Conversations ────────────────────────────────────────────────────────
   conversations: defineTable({
     type:      v.union(v.literal("direct"), v.literal("group")),
     name:      v.optional(v.string()),
     imageUrl:  v.optional(v.string()),
     createdBy: v.id("users"),
+    status:    v.optional(v.union(v.literal("pending"), v.literal("accepted"), v.literal("declined"))),
   }),
 
   // ─── Conversation members ─────────────────────────────────────────────────
@@ -112,16 +121,154 @@ export default defineSchema({
   eduSubjects: defineTable({
     name:  v.string(),
     grade: v.number(),
-  }).index("by_grade", ["grade"]),
+    code:  v.optional(v.string()), // stable slug, e.g. "mathematics" — same across grades
+  })
+    .index("by_grade", ["grade"])
+    .index("by_code_grade", ["code", "grade"]),
 
-  // ─── Edu papers ───────────────────────────────────────────────────────────
+  // ─── Edu papers (question papers, memos, addenda, formula sheets) ─────────
   eduPapers: defineTable({
-    subjectId: v.id("eduSubjects"),
-    year:      v.number(),
-    term:      v.optional(v.number()),
-    storageId: v.optional(v.id("_storage")),
-    pdfUrl:    v.optional(v.string()),
-  }).index("by_subject", ["subjectId"]),
+    subjectId:    v.id("eduSubjects"),
+    grade:        v.optional(v.number()),  // denormalised for grade-wide queries
+    year:         v.number(),
+    term:         v.optional(v.number()),  // legacy field, superseded by session
+    session:      v.optional(v.string()),  // "November" | "June" | "Feb/March"
+    paperNumber:  v.optional(v.number()),  // 1, 2, 3 — undefined if not applicable/unknown
+    language:     v.optional(v.string()),  // "English" | "Afrikaans" | ...
+    paperType:    v.optional(v.union(
+      v.literal("question_paper"),
+      v.literal("memorandum"),
+      v.literal("addendum"),
+      v.literal("formula_sheet"),
+    )),
+    sourceName:   v.optional(v.string()),  // "DBE" | "WCED ePortal" | ...
+    sourceStatus: v.optional(v.union(v.literal("verified"), v.literal("needs_url"))),
+    tags:         v.optional(v.array(v.string())),
+    storageId:    v.optional(v.id("_storage")),
+    pdfUrl:       v.optional(v.string()),
+    updatedAt:    v.optional(v.number()),
+  })
+    .index("by_subject", ["subjectId"])
+    .index("by_grade",   ["grade"]),
+
+  // ─── Edu study notes (original content only) ──────────────────────────────
+  eduNotes: defineTable({
+    grade:       v.number(),
+    subjectCode: v.string(),
+    subjectName: v.string(),
+    topic:       v.string(),
+    title:       v.string(),
+    noteType:    v.union(
+      v.literal("summary"),
+      v.literal("formula_sheet"),
+      v.literal("exam_tips"),
+      v.literal("definitions"),
+      v.literal("worked_examples"),
+      v.literal("essay_guide"),
+      v.literal("practical_guide"),
+    ),
+    difficulty:  v.union(v.literal("beginner"), v.literal("normal"), v.literal("advanced")),
+    content:     v.string(),
+    tags:        v.optional(v.array(v.string())),
+    updatedAt:   v.number(),
+  }).index("by_grade_subject", ["grade", "subjectCode"]),
+
+  // ─── Edu tutors (discovery directory) ─────────────────────────────────────
+  eduTutors: defineTable({
+    seedKey:       v.string(),            // stable identifier for idempotent seeding
+    name:          v.string(),
+    bio:           v.string(),
+    subjects:      v.array(v.string()),   // subject codes
+    grades:        v.array(v.number()),
+    province:      v.string(),
+    mode:          v.union(v.literal("online"), v.literal("in_person"), v.literal("both")),
+    hourlyRateZar: v.optional(v.number()), // undefined = free / community tutor
+    rating:        v.number(),
+    reviewCount:   v.number(),
+    languages:     v.array(v.string()),
+    availability:  v.string(),
+    verified:      v.boolean(),
+    avatarColor:   v.optional(v.string()),
+  }).index("by_seedKey", ["seedKey"]),
+
+  // ─── Edu tutor applications (become-a-tutor pipeline) ────────────────────
+  eduTutorApplications: defineTable({
+    userId:         v.id("users"),
+    subjects:       v.array(v.string()),   // subject codes
+    grades:         v.array(v.number()),
+    province:       v.string(),
+    mode:           v.union(v.literal("online"), v.literal("in_person"), v.literal("both")),
+    qualifications: v.string(),
+    motivation:     v.optional(v.string()),
+    hourlyRateZar:  v.optional(v.number()), // undefined = volunteer / free
+    status:         v.union(v.literal("pending"), v.literal("approved"), v.literal("declined")),
+  }).index("by_user", ["userId"]),
+
+  // ─── Edu tutor contact requests ───────────────────────────────────────────
+  eduTutorRequests: defineTable({
+    tutorId: v.id("eduTutors"),
+    userId:  v.id("users"),
+    message: v.optional(v.string()),
+    status:  v.union(v.literal("pending"), v.literal("accepted"), v.literal("declined")),
+  })
+    .index("by_user_tutor", ["userId", "tutorId"])
+    .index("by_tutor",      ["tutorId"]),
+
+  // ─── Edu help board posts ─────────────────────────────────────────────────
+  eduHelpPosts: defineTable({
+    authorId:        v.id("users"),
+    grade:           v.number(),
+    subjectCode:     v.string(),
+    subjectName:     v.string(),
+    topic:           v.optional(v.string()),
+    title:           v.string(),
+    body:            v.string(),
+    status:          v.union(v.literal("open"), v.literal("answered"), v.literal("solved")),
+    repliesCount:    v.number(),
+    upvotes:         v.number(),
+    acceptedReplyId: v.optional(v.id("eduHelpReplies")),
+    updatedAt:       v.number(),
+  })
+    .index("by_grade",   ["grade"])
+    .index("by_subject", ["subjectCode"])
+    .index("by_author",  ["authorId"]),
+
+  // ─── Edu help board replies ───────────────────────────────────────────────
+  eduHelpReplies: defineTable({
+    postId:     v.id("eduHelpPosts"),
+    authorId:   v.id("users"),
+    body:       v.string(),
+    upvotes:    v.number(),
+    isAccepted: v.boolean(),
+  }).index("by_post", ["postId"]),
+
+  // ─── Edu help board votes (one vote per user per target) ─────────────────
+  eduHelpVotes: defineTable({
+    userId:     v.id("users"),
+    targetType: v.union(v.literal("post"), v.literal("reply")),
+    targetId:   v.string(),
+  }).index("by_user_target", ["userId", "targetType", "targetId"]),
+
+  // ─── Edu bookmarks (papers + notes) ───────────────────────────────────────
+  eduBookmarks: defineTable({
+    userId:   v.id("users"),
+    itemType: v.union(v.literal("paper"), v.literal("note")),
+    itemId:   v.string(),
+  })
+    .index("by_user",      ["userId"])
+    .index("by_user_item", ["userId", "itemType", "itemId"]),
+
+  // ─── Edu recently viewed ──────────────────────────────────────────────────
+  eduRecentViews: defineTable({
+    userId:   v.id("users"),
+    itemType: v.union(v.literal("paper"), v.literal("note")),
+    itemId:   v.string(),
+    title:    v.string(),
+    subtitle: v.string(),
+    viewedAt: v.number(),
+  })
+    .index("by_user",      ["userId"])
+    .index("by_user_item", ["userId", "itemType", "itemId"]),
 
   // ─── Status posts (24h expiry, like WhatsApp) ─────────────────────────────
   statusPosts: defineTable({

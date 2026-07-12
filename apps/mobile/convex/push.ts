@@ -13,8 +13,9 @@ export const sendNewMessagePush = internalAction({
     senderName:     v.string(),
     messageId:      v.string(),
     content:        v.string(),
+    messageType:    v.optional(v.string()),
   },
-  handler: async (ctx, { conversationId, senderId, senderName, messageId, content }) => {
+  handler: async (ctx, { conversationId, senderId, senderName, messageId, content, messageType }) => {
     try {
       // Get conversation
       const conv = await ctx.runQuery(
@@ -22,6 +23,11 @@ export const sendNewMessagePush = internalAction({
         (await import("./_generated/api")).internal.push.getConvInfo,
         { conversationId },
       );
+
+      // Strangers' DMs must not trigger push notifications
+      if (conv?.status === "pending") {
+        return;
+      }
 
       // Get FCM tokens of all other members (with per-user preview preference)
       const recipients: Array<{ token: string; showPreview: boolean }> = await ctx.runQuery(
@@ -32,7 +38,15 @@ export const sendNewMessagePush = internalAction({
       if (!recipients.length) return;
 
       const title   = conv?.type === "group" ? (conv.name ?? "Group") : senderName;
-      const preview = content.length > 100 ? `${content.slice(0, 97)}…` : content;
+
+      let notificationText = content;
+      if (messageType === "image") {
+        notificationText = "📷 Photo";
+      } else if (messageType === "video") {
+        notificationText = "🎥 Video";
+      }
+
+      const preview = notificationText.length > 100 ? `${notificationText.slice(0, 97)}…` : notificationText;
       const fullBody = conv?.type === "group" ? `${senderName}: ${preview}` : preview;
 
       const messages = recipients.map(({ token, showPreview }) => ({
@@ -49,7 +63,7 @@ export const sendNewMessagePush = internalAction({
           message_id:         messageId,
           sender_id:          senderId,
           sender_name:        senderName,
-          content,
+          content:            notificationText,
         },
       }));
 
@@ -71,7 +85,7 @@ export const getConvInfo = internalQuery({
   args: { conversationId: v.string() },
   handler: async (ctx, { conversationId }) => {
     const conv = await ctx.db.get(conversationId as any) as any;
-    return conv ? { type: conv.type, name: conv.name ?? null } : null;
+    return conv ? { type: conv.type, name: conv.name ?? null, status: conv.status ?? null } : null;
   },
 });
 
@@ -87,9 +101,10 @@ export const getMemberTokens = internalQuery({
     const recipients: Array<{ token: string; showPreview: boolean }> = [];
     for (const m of members) {
       const user = await ctx.db.get(m.userId);
-      if (user?.fcmToken) {
+      const token = user?.expoPushToken || user?.fcmToken;
+      if (token) {
         recipients.push({
-          token:       user.fcmToken,
+          token,
           showPreview: user.notificationPreview !== false,
         });
       }
@@ -97,4 +112,3 @@ export const getMemberTokens = internalQuery({
     return recipients;
   },
 });
-

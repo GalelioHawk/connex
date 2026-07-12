@@ -1,6 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireSession, toIso } from "./_helpers";
+import { enforceRateLimit, requireSession, toIso } from "./_helpers";
 
 const ALERT_CATEGORIES = ["utility", "safety", "traffic", "water", "weather", "community"] as const;
 
@@ -30,9 +30,12 @@ export const listPosts = query({
     }
 
     const posts = await postsQuery.take(limit);
+    const filteredPosts = alertCategory
+      ? posts.filter((post) => post.alertCategory === alertCategory)
+      : posts;
 
     return Promise.all(
-      posts.map(async (post: any) => {
+      filteredPosts.map(async (post: any) => {
         const author = await ctx.db.get(post.authorId) as any;
         const liked  = await ctx.db
           .query("postLikes")
@@ -71,6 +74,7 @@ export const createPost = mutation({
   },
   handler: async (ctx, { sessionId, content, imageUrl, alertCategory }) => {
     const { userId, user } = await requireSession(ctx, sessionId);
+    await enforceRateLimit(ctx, `feed:create:${userId}`, 10, 60 * 1000);
 
     if (!content.trim()) throw new Error("Post content cannot be empty.");
 

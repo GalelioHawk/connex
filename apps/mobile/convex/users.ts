@@ -35,7 +35,7 @@ export const updateProfile = mutation({
     areaId:    v.optional(v.string()),
     province:  v.optional(v.string()),
     avatarUrl:           v.optional(v.string()),
-    fcmToken:            v.optional(v.string()),
+    expoPushToken:       v.optional(v.string()),
     notificationPreview: v.optional(v.boolean()),
   },
   handler: async (ctx, { sessionId, ...fields }) => {
@@ -46,7 +46,7 @@ export const updateProfile = mutation({
     if (fields.areaId    !== undefined) patch.areaId    = fields.areaId;
     if (fields.province  !== undefined) patch.province  = fields.province;
     if (fields.avatarUrl           !== undefined) patch.avatarUrl           = fields.avatarUrl;
-    if (fields.fcmToken            !== undefined) patch.fcmToken            = fields.fcmToken;
+    if (fields.expoPushToken       !== undefined) patch.expoPushToken       = fields.expoPushToken;
     if (fields.notificationPreview !== undefined) patch.notificationPreview = fields.notificationPreview;
     await ctx.db.patch(userId, patch);
     return { ok: true };

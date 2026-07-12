@@ -7,7 +7,7 @@
 import { action, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { SESSION_TTL_MS } from "./_helpers";
+import { enforceRateLimit, SESSION_TTL_MS } from "./_helpers";
 import { Doc, Id } from "./_generated/dataModel";
 
 // ─── Internal: create user ────────────────────────────────────────────────────
@@ -80,6 +80,21 @@ export const getSessionUser = internalQuery({
   },
 });
 
+export const checkAuthRateLimit = internalMutation({
+  args: {
+    phone: v.string(),
+    kind:  v.union(v.literal("login"), v.literal("register")),
+  },
+  handler: async (ctx, { phone, kind }) => {
+    await enforceRateLimit(
+      ctx,
+      `auth:${kind}:${phone.trim().toLowerCase()}`,
+      kind === "login" ? 10 : 5,
+      kind === "login" ? 15 * 60 * 1000 : 60 * 60 * 1000,
+    );
+  },
+});
+
 // ─── Public: register ─────────────────────────────────────────────────────────
 export const register = action({
   args: {
@@ -91,6 +106,7 @@ export const register = action({
     // Validate input
     const trimmedPhone = phone.trim();
     const trimmedName  = name.trim();
+    await ctx.runMutation(internal.auth.checkAuthRateLimit, { phone: trimmedPhone, kind: "register" });
     if (trimmedPhone.length < 9)  throw new Error("Invalid phone number.");
     if (trimmedName.length < 2)   throw new Error("Name must be at least 2 characters.");
     if (password.length < 6)      throw new Error("Password must be at least 6 characters.");
@@ -141,6 +157,7 @@ export const login = action({
     sessionId: Id<"sessions">;
     user: { id: Id<"users">; phone: string; name: string; avatar_url: string | null; bio: string | null; area_id: string | null; province: string | null; bubble_color: string | null; show_last_seen: string; show_online_status: string; show_profile_photo: string; read_receipts: boolean; show_phone: boolean };
   }> => {
+    await ctx.runMutation(internal.auth.checkAuthRateLimit, { phone, kind: "login" });
     const user: Doc<"users"> | null = await ctx.runQuery(internal.auth.getUserByPhone, { phone: phone.trim() });
     if (!user) throw new Error("Invalid phone number or password.");
     if (!user.isActive) throw new Error("Account is deactivated.");
@@ -207,13 +224,5 @@ export const changePassword = action({
     const newHash = await bcrypt.hash(newPassword, 12);
     await ctx.runMutation(internal.auth.updatePasswordHash, { userId: user._id, passwordHash: newHash });
     return { ok: true };
-  },
-});
-
-// ─── Public: save FCM token ───────────────────────────────────────────────────
-export const saveFcmToken = internalMutation({
-  args: { userId: v.id("users"), fcmToken: v.string() },
-  handler: async (ctx, { userId, fcmToken }) => {
-    await ctx.db.patch(userId, { fcmToken });
   },
 });

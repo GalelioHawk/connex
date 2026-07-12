@@ -133,8 +133,11 @@ export const getUserStatuses = query({
 
 // ─── Generate a Convex storage upload URL ─────────────────────────────────────
 export const generateUploadUrl = mutation({
-  args: {},
-  handler: async (ctx) => ctx.storage.generateUploadUrl(),
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, { sessionId }) => {
+    await requireSession(ctx, sessionId);
+    return ctx.storage.generateUploadUrl();
+  },
 });
 
 // ─── Post a new status ────────────────────────────────────────────────────────
