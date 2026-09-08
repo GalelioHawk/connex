@@ -7,6 +7,7 @@ import { v } from "convex/values";
 import { mutation, query, action, internalAction, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireSession } from "./_helpers";
+import { createCallRecord } from "./eduBookings";
 import type { Id } from "./_generated/dataModel";
 
 // ─── Internal: validate session from an action context ───────────────────────
@@ -90,34 +91,12 @@ export const initiateCall = mutation({
   handler: async (ctx, args) => {
     const { userId, user } = await requireSession(ctx, args.sessionId);
 
-    // Block duplicate ringing calls to the same person
-    const existing = await ctx.db
-      .query("calls")
-      .withIndex("by_callee_status", (q) =>
-        q.eq("calleeId", args.calleeId).eq("status", "ringing"),
-      )
-      .first();
-    if (existing) throw new Error("User is already being called");
-
-    const channelName = `call_${args.conversationId}_${Date.now()}`;
-
-    const callId = await ctx.db.insert("calls", {
+    const { callId, channelName } = await createCallRecord(ctx, {
       callerId:       userId,
       calleeId:       args.calleeId,
+      callerName:     user.name,
       conversationId: args.conversationId,
-      channelName,
-      type:           args.callType,
-      status:         "ringing",
-      startedAt:      Date.now(),
-    });
-
-    // Push notification to callee
-    await ctx.scheduler.runAfter(0, internal.calls._sendCallPush, {
-      calleeId:    args.calleeId,
-      callerName:  user.name,
-      callType:    args.callType,
-      callId,
-      channelName,
+      callType:       args.callType,
     });
 
     return { callId, channelName };

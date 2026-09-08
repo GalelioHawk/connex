@@ -306,4 +306,96 @@ export default defineSchema({
   })
     .index("by_callee_status", ["calleeId", "status"])
     .index("by_caller",        ["callerId"]),
+
+  // ─── Tutor profiles (real, operating tutors — distinct from the public directory) ──
+  tutorProfiles: defineTable({
+    userId:        v.id("users"),
+    directoryId:   v.optional(v.id("eduTutors")),
+    displayName:   v.string(),
+    hourlyRateZar: v.optional(v.number()),
+    currency:      v.literal("ZAR"),
+    isActive:      v.boolean(),
+    createdFrom:   v.union(v.literal("application"), v.literal("admin"), v.literal("seed")),
+  }).index("by_user", ["userId"]),
+
+  // ─── Tutor's private student roster ────────────────────────────────────────
+  tutorStudents: defineTable({
+    tutorId:         v.id("tutorProfiles"),
+    studentUserId:   v.optional(v.id("users")),
+    displayName:     v.string(),
+    contactPhone:    v.optional(v.string()),
+    monthlyFeeZar:   v.optional(v.number()),
+    status:          v.union(v.literal("active"), v.literal("paused"), v.literal("ended")),
+    linkedRequestId: v.optional(v.id("eduTutorRequests")),
+  })
+    .index("by_tutor",        ["tutorId"])
+    .index("by_student_user", ["studentUserId"]),
+
+  // ─── Tutoring bookings (scheduled lessons) ─────────────────────────────────
+  bookings: defineTable({
+    tutorId:         v.id("tutorProfiles"),
+    studentId:       v.id("tutorStudents"),
+    subjectCode:     v.optional(v.string()),
+    scheduledAt:     v.number(),
+    durationMinutes: v.number(),
+    mode:            v.union(v.literal("online"), v.literal("in_person")),
+    status:          v.union(
+                       v.literal("scheduled"), v.literal("completed"),
+                       v.literal("cancelled"), v.literal("no_show"),
+                     ),
+    conversationId:  v.optional(v.id("conversations")),
+    callId:          v.optional(v.id("calls")),
+    meetingLink:     v.optional(v.string()),
+    notes:           v.optional(v.string()),
+    cancelledBy:     v.optional(v.union(v.literal("tutor"), v.literal("student"))),
+    cancelReason:    v.optional(v.string()),
+  })
+    .index("by_tutor",        ["tutorId"])
+    .index("by_tutor_time",   ["tutorId", "scheduledAt"])
+    .index("by_student",      ["studentId"])
+    .index("by_tutor_status", ["tutorId", "status"]),
+
+  // ─── Homework assignments ───────────────────────────────────────────────────
+  homeworkAssignments: defineTable({
+    tutorId:             v.id("tutorProfiles"),
+    studentId:           v.id("tutorStudents"),
+    subjectCode:         v.optional(v.string()),
+    title:               v.string(),
+    instructions:        v.string(),
+    attachmentStorageId: v.optional(v.id("_storage")),
+    attachmentUrl:       v.optional(v.string()),
+    dueAt:               v.optional(v.number()),
+    status:              v.union(v.literal("assigned"), v.literal("submitted"), v.literal("marked")),
+  })
+    .index("by_tutor",          ["tutorId"])
+    .index("by_student",        ["studentId"])
+    .index("by_student_status", ["studentId", "status"]),
+
+  // ─── Homework submissions ────────────────────────────────────────────────────
+  homeworkSubmissions: defineTable({
+    assignmentId:  v.id("homeworkAssignments"),
+    studentUserId: v.id("users"),
+    storageId:     v.optional(v.id("_storage")),
+    fileUrl:       v.optional(v.string()),
+    textAnswer:    v.optional(v.string()),
+    submittedAt:   v.number(),
+    markScore:     v.optional(v.number()),
+    markMax:       v.optional(v.number()),
+    markFeedback:  v.optional(v.string()),
+    markedAt:      v.optional(v.number()),
+  }).index("by_assignment", ["assignmentId"]),
+
+  // ─── Tutoring ledger (manual payment tracking, no gateway) ─────────────────
+  ledgerEntries: defineTable({
+    tutorId:     v.id("tutorProfiles"),
+    studentId:   v.id("tutorStudents"),
+    type:        v.union(v.literal("charge"), v.literal("payment")),
+    amountZar:   v.number(),
+    description: v.string(),
+    method:      v.optional(v.union(v.literal("cash"), v.literal("eft"), v.literal("other"))),
+    recordedAt:  v.number(),
+    bookingId:   v.optional(v.id("bookings")),
+  })
+    .index("by_tutor",   ["tutorId"])
+    .index("by_student", ["studentId"]),
 });

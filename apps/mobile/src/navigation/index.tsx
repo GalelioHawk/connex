@@ -84,13 +84,47 @@ function ChatNavigator() {
 }
 // ─── Edu stack ────────────────────────────────────────────────────────────────
 export type EduStackParams = {
-  EduHome: undefined;
+  EduHome:        undefined;
+  TutorDashboard: undefined;
+  MyBookings:     undefined;
+  BookingDetail:  { bookingId: string };
+  CreateBooking:  { studentId?: string };
+  StudentRoster:  undefined;
+  HomeworkList:   undefined;
+  HomeworkDetail: { assignmentId: string };
+  AssignHomework: { studentId?: string };
+  MarkHomework:   { assignmentId: string };
+  StudentLedger:  { studentId: string };
+  Call: {
+    callId:            string;
+    channelName:       string;
+    callType:          'voice' | 'video';
+    otherUserName:     string;
+    otherUserAvatarUrl: string | null;
+    isOutgoing:        boolean;
+    conversationId:    string;
+  };
 };
 const EduStack = createNativeStackNavigator<EduStackParams>();
 function EduNavigator() {
   return (
     <EduStack.Navigator screenOptions={{ headerShown: false }}>
-      <EduStack.Screen name="EduHome" component={require('../screens/edu/EduHomeScreen').default} />
+      <EduStack.Screen name="EduHome"        component={require('../screens/edu/EduHomeScreen').default} />
+      <EduStack.Screen name="TutorDashboard" component={require('../screens/edu/TutorDashboardScreen').default} />
+      <EduStack.Screen name="MyBookings"     component={require('../screens/edu/MyBookingsScreen').default} />
+      <EduStack.Screen name="BookingDetail"  component={require('../screens/edu/BookingDetailScreen').default} />
+      <EduStack.Screen name="CreateBooking"  component={require('../screens/edu/CreateBookingScreen').default} />
+      <EduStack.Screen name="StudentRoster"  component={require('../screens/edu/StudentRosterScreen').default} />
+      <EduStack.Screen name="HomeworkList"   component={require('../screens/edu/HomeworkListScreen').default} />
+      <EduStack.Screen name="HomeworkDetail" component={require('../screens/edu/HomeworkDetailScreen').default} />
+      <EduStack.Screen name="AssignHomework" component={require('../screens/edu/AssignHomeworkScreen').default} />
+      <EduStack.Screen name="MarkHomework"   component={require('../screens/edu/MarkHomeworkScreen').default} />
+      <EduStack.Screen name="StudentLedger"  component={require('../screens/edu/StudentLedgerScreen').default} />
+      <EduStack.Screen
+        name="Call"
+        component={require('../screens/chat/CallScreen').default}
+        options={{ animation: 'slide_from_bottom' }}
+      />
     </EduStack.Navigator>
   );
 }
@@ -112,7 +146,10 @@ function MainNavigator() {
 }
 
 // ─── Bottom tab bar ───────────────────────────────────────────────────────────
-const HIDE_ON = ['ChatRoom', 'NewGroup', 'SOSContacts', 'ContactInfo', 'GroupInfo', 'MessageRequests', 'StatusViewer', 'StatusCreator', 'Call'];
+const HIDE_ON = [
+  'ChatRoom', 'NewGroup', 'SOSContacts', 'ContactInfo', 'GroupInfo', 'MessageRequests', 'StatusViewer', 'StatusCreator', 'Call',
+  'BookingDetail', 'CreateBooking', 'HomeworkDetail', 'AssignHomework', 'MarkHomework', 'StudentLedger',
+];
 
 interface FloatingMenuProps {
   colors: ThemeColors;

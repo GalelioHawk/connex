@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
+import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
@@ -15,7 +16,10 @@ type EduTab = 'papers' | 'notes' | 'tutors' | 'help';
 
 export default function EduHomeScreen() {
   const { colors } = useTheme();
+  const navigation = useNavigation<any>();
   const sessionId = useAuthStore((state) => state.sessionId)! as Id<'sessions'>;
+  const myTutorProfile = useQuery(api.eduBookings.myTutorProfile, { sessionId });
+  const myBookings = useQuery(api.eduBookings.listMyBookings, { sessionId });
   const [tab, setTab] = useState<EduTab>('papers');
   const [grade, setGrade] = useState(12);
   const [search, setSearch] = useState('');
@@ -89,6 +93,19 @@ export default function EduHomeScreen() {
               <View><Text style={[s.brand, { color: colors.text }]}>Connex <Text style={{ color: colors.accent }}>Edu</Text></Text><Text style={{ color: colors.textSecondary }}>Learn, revise, achieve.</Text></View>
               {tab === 'help' && <TouchableOpacity style={[s.askButton, { backgroundColor: colors.accent }]} onPress={() => setQuestionOpen(true)}><Ionicons name="add" size={20} color="#fff" /><Text style={s.askText}>Ask</Text></TouchableOpacity>}
             </View>
+            {myTutorProfile ? (
+              <TouchableOpacity style={[s.tutoringBanner, { backgroundColor: colors.accent }]} onPress={() => navigation.navigate('TutorDashboard')}>
+                <Ionicons name="school" size={20} color="#fff" />
+                <Text style={s.tutoringBannerText}>My Tutoring Dashboard</Text>
+                <Ionicons name="chevron-forward" size={20} color="#fff" />
+              </TouchableOpacity>
+            ) : myBookings && myBookings.length > 0 ? (
+              <TouchableOpacity style={[s.tutoringBanner, { backgroundColor: colors.accent }]} onPress={() => navigation.navigate('MyBookings')}>
+                <Ionicons name="calendar" size={20} color="#fff" />
+                <Text style={s.tutoringBannerText}>My Lessons & Homework</Text>
+                <Ionicons name="chevron-forward" size={20} color="#fff" />
+              </TouchableOpacity>
+            ) : null}
             <View style={s.gradeRow}>{[10, 11, 12].map((item) => <TouchableOpacity key={item} onPress={() => changeGrade(item)} style={[s.grade, { borderColor: colors.border }, grade === item && { backgroundColor: colors.accent, borderColor: colors.accent }]}><Text style={{ color: grade === item ? '#fff' : colors.textSecondary, fontWeight: '800' }}>Grade {item}</Text></TouchableOpacity>)}</View>
             <View style={[s.search, { backgroundColor: colors.surface }]}><Ionicons name="search" size={18} color={colors.textMuted} /><TextInput value={search} onChangeText={setSearch} placeholder={`Search ${tab}`} placeholderTextColor={colors.textMuted} style={{ flex: 1, color: colors.text, fontSize: 15 }} /></View>
             <View style={[s.stats, { backgroundColor: colors.surface }]}>
@@ -132,6 +149,7 @@ function Stat({ value, label, color, muted }: { value: number; label: string; co
 
 const s = StyleSheet.create({
   root: { flex: 1 }, list: { paddingHorizontal: 16, paddingBottom: 130 }, header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 15, paddingBottom: 13 }, brand: { fontSize: 27, fontWeight: '900' }, askButton: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 }, askText: { color: '#fff', fontWeight: '900' },
+  tutoringBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 12 }, tutoringBannerText: { flex: 1, color: '#fff', fontWeight: '900', fontSize: 15 },
   gradeRow: { flexDirection: 'row', gap: 8 }, grade: { flex: 1, borderWidth: 1, borderRadius: 12, alignItems: 'center', paddingVertical: 10 }, search: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 13, paddingVertical: 11, borderRadius: 12, marginTop: 12 },
   stats: { flexDirection: 'row', justifyContent: 'space-around', borderRadius: 14, paddingVertical: 13, marginTop: 12 }, tabs: { gap: 8, paddingVertical: 12 }, tab: { flexDirection: 'row', gap: 6, alignItems: 'center', borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8 }, subjects: { gap: 7, paddingBottom: 12 }, subject: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 15 }, sectionTitle: { fontSize: 20, fontWeight: '900', marginBottom: 11 },
   card: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 15, padding: 13, marginBottom: 10 }, cardIcon: { width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, cardTitle: { fontSize: 15, fontWeight: '900' }, tutorLetter: { color: '#fff', fontSize: 19, fontWeight: '900' }, contact: { borderWidth: 1, borderRadius: 15, paddingHorizontal: 10, paddingVertical: 7 },
